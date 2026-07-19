@@ -3,12 +3,12 @@ services:
     build: .
     container_name: dptv-recorder
     ports:
-      - "${HOST_PORT:-3000}:3000"
+      - "${HOST_PORT:-3030}:3030"
     volumes:
       - ${DATA_DIR:-./data}:/data
       - ${RECORDINGS_DIR:-./recordings}:/recordings
     environment:
-      - PORT=3000
+      - PORT=3030
       - DB_PATH=/data/guide.db
       - RECORDINGS_PATH=/recordings
     restart: unless-stopped
