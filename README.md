@@ -121,3 +121,9 @@ npm start
 ffmpeg must be installed on your machine for recording to work locally. The
 dev DB lands in `data/guide.db` and recordings in `/recordings` by default —
 override with `DB_PATH` / `RECORDINGS_PATH`.
+
+## Publishing to Docker Hub
+
+See `DOCKERHUB_SETUP.md` for how to auto-publish this image to Docker Hub
+via GitHub Actions on every push (so Unraid/other hosts can just `docker
+pull` instead of building from source), or how to build/push it manually.
