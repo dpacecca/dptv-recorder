@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>dptv-recorder</Name>
+  <Repository>dpacecca/dptv-recorder:latest</Repository>
+  <Registry>https://hub.docker.com/r/dpacecca/dptv-recorder</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/dpacecca/dptv-recorder</Support>
+  <Project>https://github.com/dpacecca/dptv-recorder</Project>
+  <Overview>DPTV Recorder - a self-hosted channel guide and DVR for Xtream Codes (XC) IPTV servers. 7-day EPG timeline, click-to-play live preview, and scheduled recording straight to raw .ts files via ffmpeg.</Overview>
+  <Category>MediaApp:Video Tools:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL/>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Port the web UI is served on" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/dptv-recorder/data" Mode="rw" Description="Where the SQLite database (channels/EPG/settings) is stored. This is the ONLY place that path is configured - do not add a DB_PATH variable." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/dptv-recorder/data</Config>
+  <Config Name="Recordings" Target="/recordings" Default="/mnt/user/data/media/recordings" Mode="rw" Description="Where recorded .ts files are written. Point this at a disk with real room - raw .ts is not small. This is the ONLY place that path is configured - do not add a RECORDINGS_PATH variable." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media/recordings</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the app runs as, so files it writes are owned correctly. Unraid default (nobody): 99" Type="Variable" Display="always" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the app runs as. Unraid default (users): 100" Type="Variable" Display="always" Required="false" Mask="false">100</Config>
+  <Config Name="TZ" Target="TZ" Default="UTC" Mode="" Description="Your local IANA timezone, e.g. Australia/Perth. Needed to correctly interpret EPG times from providers whose xmltv.php omits a UTC offset." Type="Variable" Display="always" Required="false" Mask="false">UTC</Config>
+</Container>

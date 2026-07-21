@@ -127,3 +127,10 @@ override with `DB_PATH` / `RECORDINGS_PATH`.
 See `DOCKERHUB_SETUP.md` for how to auto-publish this image to Docker Hub
 via GitHub Actions on every push (so Unraid/other hosts can just `docker
 pull` instead of building from source), or how to build/push it manually.
+
+## Installing on Unraid
+
+See `UNRAID_SETUP.md` — it includes a ready-to-use Community Applications
+template (`unraid-template.xml`) and covers a known gotcha with Unraid's
+auto-conversion of the image into a template (it can misconfigure
+`DB_PATH`/`RECORDINGS_PATH` as host paths, which crashes the app on boot).
