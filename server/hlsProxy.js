@@ -1,5 +1,9 @@
 const crypto = require('crypto');
 
+// Same UA used in xcClient.js - some panels block/serve differently based on
+// User-Agent for the actual stream endpoints too, not just player_api.php.
+const USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20';
+
 // Opaque token -> real upstream URL (which contains the XC username/password
 // in its path). Tokens are short-lived and never expose credentials to the client.
 const tokenMap = new Map();
@@ -56,8 +60,11 @@ async function hlsProxyHandler(req, res) {
   if (!url) return res.status(410).send('stream link expired, reselect the channel');
 
   try {
-    const upstream = await fetch(url);
-    if (!upstream.ok) return res.status(upstream.status).send('upstream error');
+    const upstream = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+    if (!upstream.ok) {
+      const body = await upstream.text().catch(() => '');
+      return res.status(upstream.status).send(`upstream error (${upstream.status})${body ? ': ' + body.slice(0, 200) : ''}`);
+    }
 
     const contentType = upstream.headers.get('content-type') || '';
     const isPlaylist =
