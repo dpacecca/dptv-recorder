@@ -41,10 +41,23 @@ async function performSync() {
     console.log(`[sync] got ${streams.length} channels`);
 
     syncState.phase = 'epg';
-    const xmltvText = await xc.fetchXmltv(host, username, password);
-    console.log(`[sync] fetched xmltv.php (${xmltvText.length} bytes)`);
-    const { programmes } = parseXmltv(xmltvText);
-    console.log(`[sync] parsed ${programmes.length} programmes from xmltv`);
+    const activeId = Number(getSetting('active_epg_source_id', 0));
+    let source = activeId ? db.prepare('SELECT * FROM epg_sources WHERE id = ? AND enabled = 1').get(activeId) : null;
+    if (!source) source = db.prepare("SELECT * FROM epg_sources WHERE source_type = 'xc' AND enabled = 1 ORDER BY id LIMIT 1").get();
+    if (!source) throw new Error('No enabled EPG source is selected.');
+    let xmltvText;
+    try {
+      xmltvText = source.source_type === 'xc'
+        ? await xc.fetchXmltv(host, username, password)
+        : await xc.fetchXmltvUrl(source.url, source.username || '', source.password || '');
+      db.prepare('UPDATE epg_sources SET last_sync_at = ?, last_error = NULL WHERE id = ?').run(Date.now(), source.id);
+    } catch (err) {
+      db.prepare('UPDATE epg_sources SET last_error = ? WHERE id = ?').run(err.message, source.id);
+      throw err;
+    }
+    console.log(`[sync] fetched EPG source "${source.name}" (${xmltvText.length} bytes)`);
+    const { programmes } = parseXmltv(xmltvText, source.time_zone || 'Australia/Perth');
+    console.log(`[sync] parsed ${programmes.length} programmes from XMLTV`);
 
     syncState.phase = 'saving';
     const now = Date.now();

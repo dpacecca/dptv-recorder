@@ -36,6 +36,43 @@ router.post('/settings', async (req, res) => {
   }
 });
 
+// ---------- EPG sources ----------
+router.get('/epg-sources', (req, res) => {
+  const activeId = Number(getSetting('active_epg_source_id', 0));
+  const rows = db.prepare(`SELECT id, name, source_type, url, username, time_zone, enabled, last_sync_at, last_error
+    FROM epg_sources ORDER BY source_type = 'xc' DESC, name COLLATE NOCASE`).all();
+  res.json(rows.map(row => ({ ...row, enabled: !!row.enabled, active: row.id === activeId })));
+});
+router.post('/epg-sources', async (req, res) => {
+  const { name, url, username, password, timeZone } = req.body || {};
+  if (!name || !url) return res.status(400).json({ error: 'Name and XMLTV URL are required.' });
+  try {
+    new URL(url);
+    await xc.fetchXmltvUrl(url, username || '', password || '', 20000);
+    const info = db.prepare(`INSERT INTO epg_sources
+      (name, source_type, url, username, password, time_zone, enabled, created_at)
+      VALUES (?, 'url', ?, ?, ?, ?, 1, ?)`).run(name.trim(), url.trim(), username || '', password || '', timeZone || 'Australia/Perth', Date.now());
+    res.json({ ok: true, id: Number(info.lastInsertRowid) });
+  } catch (err) { res.status(400).json({ error: 'Could not use that EPG source: ' + err.message }); }
+});
+router.put('/epg-sources/:id/activate', (req, res) => {
+  const row = db.prepare('SELECT id FROM epg_sources WHERE id = ? AND enabled = 1').get(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Enabled EPG source not found.' });
+  setSetting('active_epg_source_id', row.id); res.json({ ok: true });
+});
+router.delete('/epg-sources/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare('SELECT source_type FROM epg_sources WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'EPG source not found.' });
+  if (row.source_type === 'xc') return res.status(400).json({ error: 'The built-in Xtream Codes source cannot be deleted.' });
+  db.prepare('DELETE FROM epg_sources WHERE id = ?').run(id);
+  if (Number(getSetting('active_epg_source_id', 0)) === id) {
+    const fallback = db.prepare("SELECT id FROM epg_sources WHERE source_type = 'xc' LIMIT 1").get();
+    if (fallback) setSetting('active_epg_source_id', fallback.id);
+  }
+  res.json({ ok: true });
+});
+
 // ---------- sync ----------
 router.post('/sync', (req, res) => {
   performSync().catch((err) => console.error('[sync] failed:', err.message, err.stack)); // full detail also polled via /api/sync/status

@@ -66,6 +66,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_recordings_status ON recordings(status, rec_start);
 `);
 
+// Multiple XMLTV sources. Existing databases are upgraded automatically.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS epg_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'url',
+    url TEXT, username TEXT, password TEXT,
+    time_zone TEXT NOT NULL DEFAULT 'Australia/Perth',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_sync_at INTEGER, last_error TEXT,
+    created_at INTEGER NOT NULL
+  );
+`);
+
 function getSetting(key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
   return row ? row.value : fallback;
@@ -83,6 +97,15 @@ function getAllSettings() {
   const out = {};
   for (const r of rows) out[r.key] = r.value;
   return out;
+}
+
+
+// Seed the built-in XC EPG after the settings helpers are available.
+if (!db.prepare("SELECT 1 FROM epg_sources WHERE source_type = 'xc'").get()) {
+  const info = db.prepare(`INSERT INTO epg_sources
+    (name, source_type, time_zone, enabled, created_at)
+    VALUES ('Xtream Codes EPG', 'xc', 'Australia/Perth', 1, ?)`).run(Date.now());
+  if (!getSetting('active_epg_source_id')) setSetting('active_epg_source_id', info.lastInsertRowid);
 }
 
 module.exports = { db, getSetting, setSetting, getAllSettings, DB_PATH };

@@ -90,6 +90,18 @@ async function fetchXmltv(host, username, password, timeoutMs = 120000) {
   }
 }
 
+async function fetchXmltvUrl(url, username = '', password = '', timeoutMs = 120000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const headers = { 'User-Agent': USER_AGENT };
+    if (username || password) headers.Authorization = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+    const res = await fetch(url, { signal: controller.signal, headers });
+    if (!res.ok) throw new Error(`EPG source responded ${res.status} ${res.statusText}`);
+    return await res.text();
+  } finally { clearTimeout(timer); }
+}
+
 function liveStreamUrl(host, username, password, streamId, ext = 'm3u8') {
   const base = normalizeHost(host);
   return `${base}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${streamId}.${ext}`;
@@ -102,6 +114,7 @@ module.exports = {
   getLiveStreams,
   xmltvUrl,
   fetchXmltv,
+  fetchXmltvUrl,
   liveStreamUrl,
   USER_AGENT,
 };

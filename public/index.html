@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DPTV Recorder</title>
-<link rel="stylesheet" href="styles.css">
+<title>DPTV Recorder v1.1</title>
+<link rel="stylesheet" href="styles.css?v=1.1">
 </head>
 <body>
 
@@ -97,6 +97,7 @@
   <div class="modal modal-wide">
     <div class="modal-tabs">
       <button class="modal-tab active" data-tab="xc">XC Server</button>
+      <button class="modal-tab" data-tab="epg">EPG Sources</button>
       <button class="modal-tab" data-tab="rec">Recording</button>
       <button class="modal-tab" data-tab="list">Recordings</button>
     </div>
@@ -112,6 +113,18 @@
       </div>
     </div>
 
+    <div class="modal-tab-panel" id="tabEpg" style="display:none">
+      <div class="modal-hint">Add XMLTV sources and select which source supplies the guide for this playlist.</div>
+      <div id="epgSourcesList" class="epg-sources-list"></div>
+      <div class="epg-source-form">
+        <label>Source name<br><input type="text" id="cfgEpgName" placeholder="Alternative XMLTV"></label>
+        <label>XMLTV URL<br><input type="url" id="cfgEpgUrl" placeholder="https://example.com/guide.xml"></label>
+        <div class="epg-source-grid"><label>Username (optional)<br><input type="text" id="cfgEpgUser"></label><label>Password (optional)<br><input type="password" id="cfgEpgPass"></label></div>
+        <label>Timezone when the XMLTV timestamp has no offset<br><select id="cfgEpgTimeZone"><option value="Australia/Perth">Australia/Perth</option><option value="Australia/Sydney">Australia/Sydney</option><option value="UTC">UTC</option></select></label>
+        <div class="modal-error" id="cfgEpgError"></div>
+        <div class="modal-actions"><button id="cfgEpgClose" class="btn-secondary">Close</button><button id="cfgEpgAdd" class="btn-primary">Test &amp; Add Source</button></div>
+      </div>
+    </div>
     <div class="modal-tab-panel" id="tabRec" style="display:none">
       <label>Start recording this many minutes early<br>
         <input type="number" id="cfgPadBefore" min="0" max="120" step="1"></label>
@@ -141,6 +154,6 @@
 </div>
 
 <script src="vendor/hls.min.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=1.1"></script>
 </body>
 </html>
