@@ -43,6 +43,17 @@ header{
   background:var(--text-faint);
   transition:background .2s, box-shadow .2s;
 }
+
+.error-banner{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  background:rgba(226,73,90,0.14); border-bottom:1px solid var(--live);
+  color:var(--live); font-family:var(--font-mono); font-size:12.5px;
+  padding:10px 20px; word-break:break-word;
+}
+.error-banner button{
+  background:none; border:none; color:var(--live); cursor:pointer;
+  font-size:14px; flex-shrink:0; padding:2px 6px;
+}
 .brand .dot.ok{ background:var(--amber); box-shadow:0 0 8px var(--amber); }
 .brand .dot.error{ background:var(--live); box-shadow:0 0 8px var(--live); }
 .brand h1{

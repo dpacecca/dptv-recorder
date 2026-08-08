@@ -7,6 +7,12 @@ fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
+// Explicitly off: some SQLite builds default this to ON, which would reject
+// channels whose category_id doesn't (yet, or ever) match a known category -
+// common with providers/aggregators that have inconsistent category data.
+// We handle orphaned category_ids ourselves in sync.js instead of relying on
+// the database to enforce it.
+db.pragma('foreign_keys = OFF');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS settings (

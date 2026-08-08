@@ -13,6 +13,9 @@
 
   const els = {
     statusDot: document.getElementById('statusDot'),
+    errorBanner: document.getElementById('errorBanner'),
+    errorBannerText: document.getElementById('errorBannerText'),
+    errorBannerClose: document.getElementById('errorBannerClose'),
     lastSynced: document.getElementById('lastSynced'),
     autoSync: document.getElementById('autoSync'),
     syncBtn: document.getElementById('syncBtn'),
@@ -61,6 +64,17 @@
     hls: null,
   };
 
+  function showError(message) {
+    const text = (message && String(message).trim()) || 'Something went wrong, but no error message was provided. Check docker logs for detail.';
+    els.errorBannerText.textContent = text;
+    els.errorBanner.style.display = 'flex';
+    console.error(text);
+  }
+  function hideError() {
+    els.errorBanner.style.display = 'none';
+  }
+  els.errorBannerClose.addEventListener('click', hideError);
+
   // ---------------- helpers ----------------
   function fmtRelative(ms) {
     if (!ms) return 'never';
@@ -96,6 +110,8 @@
     const s = await api('/settings');
     els.lastSynced.textContent = fmtRelative(s.lastSyncAt);
     els.lastSynced.classList.toggle('fresh', !!s.lastSyncAt);
+    els.lastSynced.classList.remove('error');
+    els.lastSynced.title = '';
     els.autoSync.value = String(s.autoSyncHours || 0);
     els.statusDot.className = 'dot ' + (s.xcHost ? 'ok' : '');
     if (!s.xcHost) openSettingsModal();
@@ -203,6 +219,7 @@
     els.syncBtn.classList.add('syncing');
     els.syncBtn.disabled = true;
     els.syncLabel.textContent = 'Syncing...';
+    hideError();
     try {
       await api('/sync', { method: 'POST' });
       await pollSyncUntilDone();
@@ -212,9 +229,8 @@
     } catch (err) {
       els.lastSynced.textContent = 'sync failed';
       els.lastSynced.classList.add('error');
-      els.lastSynced.title = err.message; // hover for detail
-      console.error(err);
-      alert('Sync failed: ' + err.message);
+      els.lastSynced.title = err.message || ''; // hover for detail
+      showError('Sync failed: ' + (err.message || 'no error message was returned - check docker logs for detail.'));
     } finally {
       els.syncBtn.classList.remove('syncing');
       els.syncBtn.disabled = false;
@@ -474,7 +490,7 @@
       }
       refreshRecordingsBadge();
     } catch (err) {
-      alert(err.message);
+      showError(err.message);
       if (btn) btn.disabled = false;
     }
   }
@@ -550,7 +566,7 @@
           refreshRecordingsBadge();
           if (state.currentProgram) refreshRecordButton(state.currentProgram.channel, state.currentProgram.prog);
         } catch (err) {
-          alert(err.message);
+          showError(err.message);
         }
       });
     });
@@ -585,7 +601,7 @@
       await loadRecordingsList();
       refreshRecordingsBadge();
     } catch (err) {
-      alert(err.message);
+      showError(err.message);
     }
   });
 

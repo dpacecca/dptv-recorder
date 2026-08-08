@@ -21,21 +21,30 @@ function requireCreds() {
 }
 
 async function performSync() {
-  if (syncState.running) return syncState;
+  if (syncState.running) {
+    console.log('[sync] already running, ignoring duplicate trigger');
+    return syncState;
+  }
   syncState = { running: true, phase: 'starting', error: null, startedAt: Date.now(), finishedAt: null, skipped: null };
+  console.log('[sync] starting');
 
   try {
     const { host, username, password } = requireCreds();
 
     syncState.phase = 'categories';
+    console.log('[sync] fetching categories from', host);
     const categories = await xc.getLiveCategories(host, username, password);
+    console.log(`[sync] got ${categories.length} categories`);
 
     syncState.phase = 'channels';
     const streams = await xc.getLiveStreams(host, username, password);
+    console.log(`[sync] got ${streams.length} channels`);
 
     syncState.phase = 'epg';
     const xmltvText = await xc.fetchXmltv(host, username, password);
+    console.log(`[sync] fetched xmltv.php (${xmltvText.length} bytes)`);
     const { programmes } = parseXmltv(xmltvText);
+    console.log(`[sync] parsed ${programmes.length} programmes from xmltv`);
 
     syncState.phase = 'saving';
     const now = Date.now();
@@ -47,15 +56,37 @@ async function performSync() {
     const tx = db.transaction(() => {
       db.prepare('DELETE FROM categories').run();
       const insCat = db.prepare('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)');
+      const knownCategoryIds = new Set();
       categories.forEach((c, i) => {
         if (c.category_id === undefined || c.category_id === null) { skipped.categories++; return; }
+        const id = String(c.category_id);
         try {
-          insCat.run(String(c.category_id), c.category_name != null ? String(c.category_name) : '(Unnamed)', i);
+          insCat.run(id, c.category_name != null ? String(c.category_name) : '(Unnamed)', i);
+          knownCategoryIds.add(id);
         } catch (err) {
           skipped.categories++;
           console.warn('[sync] skipped a malformed category:', err.message, JSON.stringify(c).slice(0, 200));
         }
       });
+
+      // Some providers/aggregators list channels under a category_id that
+      // never actually appears in get_live_categories. Rather than drop
+      // those channels (they'd become invisible - not shown under any
+      // category), give them a synthetic "Uncategorized" bucket per missing
+      // id, so they still show up somewhere.
+      let nextSortOrder = categories.length;
+      const orphanedCategoryIds = new Set();
+      streams.forEach((s) => {
+        const id = s.category_id != null ? String(s.category_id) : '';
+        if (id && !knownCategoryIds.has(id)) orphanedCategoryIds.add(id);
+      });
+      orphanedCategoryIds.forEach((id) => {
+        insCat.run(id, `Uncategorized (${id})`, nextSortOrder++);
+        knownCategoryIds.add(id);
+      });
+      if (orphanedCategoryIds.size > 0) {
+        console.warn(`[sync] ${orphanedCategoryIds.size} category id(s) referenced by channels weren't in get_live_categories - created placeholder categories for them so those channels stay visible`);
+      }
 
       db.prepare('DELETE FROM channels').run();
       const insChan = db.prepare(`
@@ -104,9 +135,12 @@ async function performSync() {
     setSetting('last_sync_at', Date.now());
     syncState.phase = 'done';
     syncState.skipped = skipped;
+    console.log('[sync] completed successfully');
   } catch (err) {
+    const failedPhase = syncState.phase;
     syncState.error = err.message;
     syncState.phase = 'error';
+    console.error(`[sync] failed during phase "${failedPhase}":`, err.message);
     throw err;
   } finally {
     syncState.running = false;

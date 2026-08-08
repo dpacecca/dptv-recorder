@@ -38,7 +38,7 @@ router.post('/settings', async (req, res) => {
 
 // ---------- sync ----------
 router.post('/sync', (req, res) => {
-  performSync().catch(() => {}); // errors surface via /api/sync/status
+  performSync().catch((err) => console.error('[sync] failed:', err.message, err.stack)); // full detail also polled via /api/sync/status
   res.json({ started: true });
 });
 
