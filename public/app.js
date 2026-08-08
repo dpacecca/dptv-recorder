@@ -212,7 +212,9 @@
     } catch (err) {
       els.lastSynced.textContent = 'sync failed';
       els.lastSynced.classList.add('error');
+      els.lastSynced.title = err.message; // hover for detail
       console.error(err);
+      alert('Sync failed: ' + err.message);
     } finally {
       els.syncBtn.classList.remove('syncing');
       els.syncBtn.disabled = false;
