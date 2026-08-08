@@ -54,11 +54,14 @@
     cfgRecError: document.getElementById('cfgRecError'),
     cfgRecSave: document.getElementById('cfgRecSave'),
     cfgRecCancel: document.getElementById('cfgRecCancel'),
-    epgSourcesList: document.getElementById('epgSourcesList'), cfgEpgName: document.getElementById('cfgEpgName'),
-    cfgEpgUrl: document.getElementById('cfgEpgUrl'), cfgEpgUser: document.getElementById('cfgEpgUser'),
-    cfgEpgPass: document.getElementById('cfgEpgPass'), cfgEpgTimeZone: document.getElementById('cfgEpgTimeZone'),
-    cfgEpgError: document.getElementById('cfgEpgError'), cfgEpgAdd: document.getElementById('cfgEpgAdd'),
-    cfgEpgClose: document.getElementById('cfgEpgClose'),
+    epgSourceSelect: document.getElementById('epgSourceSelect'),
+    epgSourceList: document.getElementById('epgSourceList'),
+    epgSourceName: document.getElementById('epgSourceName'),
+    epgSourceUrl: document.getElementById('epgSourceUrl'),
+    epgSourceAdd: document.getElementById('epgSourceAdd'),
+    epgSourceError: document.getElementById('epgSourceError'),
+    epgCancel: document.getElementById('epgCancel'),
+    epgSave: document.getElementById('epgSave'),
   };
 
   let state = {
@@ -142,11 +145,13 @@
     els.cfgPadBefore.value = rec.padBeforeMin;
     els.cfgPadAfter.value = rec.padAfterMin;
     els.cfgRecPath.textContent = rec.recordingsPath;
+    await loadEpgSources();
     switchSettingsTab('xc');
     openSettingsModal();
   });
   els.cfgCancel.addEventListener('click', closeSettingsModal);
   els.cfgRecCancel.addEventListener('click', closeSettingsModal);
+  els.epgCancel.addEventListener('click', closeSettingsModal);
   els.recListClose.addEventListener('click', closeSettingsModal);
 
   document.querySelectorAll('.modal-tab').forEach((btn) => {
@@ -158,7 +163,6 @@
     document.getElementById('tabEpg').style.display = tab === 'epg' ? 'flex' : 'none';
     document.getElementById('tabRec').style.display = tab === 'rec' ? 'flex' : 'none';
     document.getElementById('tabList').style.display = tab === 'list' ? 'flex' : 'none';
-    if (tab === 'epg') loadEpgSources();
     if (tab === 'list') {
       loadRecordingsList();
       startRecordingsPoll();
@@ -166,21 +170,6 @@
       stopRecordingsPoll();
     }
   }
-
-  async function loadEpgSources() {
-    const sources = await api('/epg-sources');
-    els.epgSourcesList.innerHTML = sources.map(source => `<div class="epg-source-item${source.active ? ' active' : ''}"><div class="epg-source-info"><div class="epg-source-name">${escapeHtml(source.name)}${source.active ? ' · Active' : ''}</div><div class="epg-source-meta">${source.source_type === 'xc' ? 'Uses the XC xmltv.php endpoint' : escapeHtml(source.url || '')} · ${escapeHtml(source.time_zone)}</div>${source.last_error ? `<div class="epg-source-meta" style="color:var(--live)">${escapeHtml(source.last_error)}</div>` : ''}</div><div class="epg-source-actions">${source.active ? '' : `<button data-action="activate" data-id="${source.id}">Use</button>`}${source.source_type === 'xc' ? '' : `<button data-action="delete" data-id="${source.id}">Delete</button>`}</div></div>`).join('');
-    els.epgSourcesList.querySelectorAll('button').forEach(button => button.addEventListener('click', async () => {
-      try { const activate = button.dataset.action === 'activate'; await api(`/epg-sources/${button.dataset.id}${activate ? '/activate' : ''}`, { method: activate ? 'PUT' : 'DELETE' }); await loadEpgSources(); }
-      catch (err) { els.cfgEpgError.textContent = err.message; }
-    }));
-  }
-  els.cfgEpgAdd.addEventListener('click', async () => {
-    els.cfgEpgError.textContent = ''; els.cfgEpgAdd.disabled = true; els.cfgEpgAdd.textContent = 'Testing...';
-    try { await api('/epg-sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: els.cfgEpgName.value.trim(), url: els.cfgEpgUrl.value.trim(), username: els.cfgEpgUser.value.trim(), password: els.cfgEpgPass.value, timeZone: els.cfgEpgTimeZone.value }) }); els.cfgEpgName.value = ''; els.cfgEpgUrl.value = ''; els.cfgEpgUser.value = ''; els.cfgEpgPass.value = ''; await loadEpgSources(); }
-    catch (err) { els.cfgEpgError.textContent = err.message; } finally { els.cfgEpgAdd.disabled = false; els.cfgEpgAdd.textContent = 'Test & Add Source'; }
-  });
-  els.cfgEpgClose.addEventListener('click', closeSettingsModal);
 
   els.cfgRecSave.addEventListener('click', async () => {
     els.cfgRecSave.disabled = true;
@@ -199,6 +188,89 @@
       els.cfgRecError.textContent = err.message;
     } finally {
       els.cfgRecSave.disabled = false;
+    }
+  });
+
+  // ---------------- EPG source tab ----------------
+  let epgSourcesCache = { sources: [], activeEpgSourceId: '' };
+
+  async function loadEpgSources() {
+    epgSourcesCache = await api('/epg-sources');
+    renderEpgSources();
+  }
+
+  function renderEpgSources() {
+    // dropdown
+    const opts = ['<option value="">XC Server (default xmltv.php)</option>']
+      .concat(epgSourcesCache.sources.map((s) =>
+        `<option value="${s.id}">${escapeHtml(s.name)}</option>`
+      ));
+    els.epgSourceSelect.innerHTML = opts.join('');
+    els.epgSourceSelect.value = epgSourcesCache.activeEpgSourceId || '';
+
+    // list of added sources with delete buttons
+    if (epgSourcesCache.sources.length === 0) {
+      els.epgSourceList.innerHTML = `<div class="record-note">No custom sources added yet.</div>`;
+    } else {
+      els.epgSourceList.innerHTML = epgSourcesCache.sources.map((s) => `
+        <div class="epg-source-item">
+          <div class="es-info">
+            <div class="es-name">${escapeHtml(s.name)}</div>
+            <div class="es-url">${escapeHtml(s.url)}</div>
+          </div>
+          <button data-id="${s.id}">Remove</button>
+        </div>
+      `).join('');
+      els.epgSourceList.querySelectorAll('button[data-id]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          try {
+            await api(`/epg-sources/${btn.dataset.id}`, { method: 'DELETE' });
+            await loadEpgSources();
+          } catch (err) {
+            els.epgSourceError.textContent = err.message;
+          }
+        });
+      });
+    }
+  }
+
+  els.epgSourceAdd.addEventListener('click', async () => {
+    const name = els.epgSourceName.value.trim();
+    const url = els.epgSourceUrl.value.trim();
+    els.epgSourceError.textContent = '';
+    if (!name || !url) {
+      els.epgSourceError.textContent = 'Both a name and a URL are required.';
+      return;
+    }
+    try {
+      await api('/epg-sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, url }),
+      });
+      els.epgSourceName.value = '';
+      els.epgSourceUrl.value = '';
+      await loadEpgSources();
+    } catch (err) {
+      els.epgSourceError.textContent = err.message;
+    }
+  });
+
+  els.epgSave.addEventListener('click', async () => {
+    els.epgSave.disabled = true;
+    els.epgSourceError.textContent = '';
+    try {
+      await api('/epg-sources/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: els.epgSourceSelect.value || null }),
+      });
+      closeSettingsModal();
+      triggerSync();
+    } catch (err) {
+      els.epgSourceError.textContent = err.message;
+    } finally {
+      els.epgSave.disabled = false;
     }
   });
 
@@ -288,6 +360,9 @@
     const cats = await api('/categories');
     state.categories = cats;
     renderCategories();
+    if (!state.activeCategoryId && cats.length > 0) {
+      selectCategory(cats[0].id);
+    }
   }
 
   function renderCategories(filter = '') {
@@ -350,8 +425,7 @@
       const md = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       chip.innerHTML = `<span class="dow">${dow}</span>${md}`;
       chip.addEventListener('click', () => {
-        const target = day === 0 ? Math.max(0, ((Date.now() - timelineStart) / 60000) * PX_PER_MIN - 300) : day * DAY_WIDTH;
-        els.epgBody.scrollTo({ left: target, behavior: 'smooth' });
+        els.epgBody.scrollLeft = day * DAY_WIDTH;
       });
       els.dayChips.appendChild(chip);
     }
@@ -361,6 +435,17 @@
     const day = Math.round(els.epgBody.scrollLeft / DAY_WIDTH);
     [...els.dayChips.children].forEach((chip, i) => chip.classList.toggle('active', i === day));
   });
+
+  // A plain vertical mouse-wheel scroll does NOT pan a horizontally-scrolling
+  // element by default in most browsers - only trackpad horizontal swipes or
+  // shift+wheel do. Translate normal wheel scroll into horizontal movement so
+  // scrolling the guide "just works" regardless of input device.
+  els.epgBody.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      els.epgBody.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  }, { passive: false });
 
   els.jumpNow.addEventListener('click', () => {
     const nowOffsetMin = (Date.now() - timelineStart) / 60000;
@@ -372,6 +457,10 @@
     els.epgRows.innerHTML = `<div class="empty-hint">Loading guide...</div>`;
     const data = await api(`/epg?category_id=${encodeURIComponent(categoryId)}&start=${timelineStart}&end=${timelineEnd}`);
     renderEpgRows(data.channels, data.programs);
+    // only now does the grid actually have real (7-day-wide) content to scroll
+    // within - jumping to "now" any earlier is a no-op, since the browser
+    // clamps scrollLeft back to 0 on a container with nothing to scroll yet.
+    requestAnimationFrame(() => els.jumpNow.click());
   }
 
   function renderEpgRows(channels, programsMap) {
@@ -452,7 +541,6 @@
     refreshRecordButton(channel, prog);
 
     selectChannelForPreview(channel);
-    if (isLive) startPreview();
   }
 
   async function refreshRecordButton(channel, prog) {
@@ -676,7 +764,6 @@
       hls.on(window.Hls.Events.ERROR, (evt, data) => {
         if (data.fatal) {
           els.previewHint.textContent = 'Stream unavailable (' + data.details + ')';
-          showError('Preview failed: ' + data.details + '. Check the browser Network tab for /api/stream and /api/hls responses.');
           els.previewPanel.classList.remove('playing');
         }
       });
@@ -696,19 +783,6 @@
       startPreview();
     }
   });
-
-  // Horizontal guide navigation: day buttons, Shift+wheel and pointer drag.
-  els.epgBody.addEventListener('wheel', (event) => {
-    if (event.shiftKey && Math.abs(event.deltaY) > Math.abs(event.deltaX)) { event.preventDefault(); els.epgBody.scrollLeft += event.deltaY; }
-  }, { passive: false });
-  let guideDrag = null;
-  els.epgBody.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || event.target.closest('.epg-prog, .epg-channel, button, input')) return;
-    guideDrag = { x: event.clientX, left: els.epgBody.scrollLeft }; els.epgBody.classList.add('dragging'); els.epgBody.setPointerCapture(event.pointerId);
-  });
-  els.epgBody.addEventListener('pointermove', (event) => { if (guideDrag) els.epgBody.scrollLeft = guideDrag.left - (event.clientX - guideDrag.x); });
-  const endGuideDrag = () => { guideDrag = null; els.epgBody.classList.remove('dragging'); };
-  els.epgBody.addEventListener('pointerup', endGuideDrag); els.epgBody.addEventListener('pointercancel', endGuideDrag);
 
   // ---------------- search ----------------
   let searchDebounce = null;
@@ -828,7 +902,6 @@
     }
     refreshRecordingsBadge();
     setInterval(refreshRecordingsBadge, 30000);
-    setTimeout(() => els.jumpNow.click(), 150);
   }
 
   init();

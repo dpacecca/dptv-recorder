@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DPTV Recorder v1.1</title>
-<link rel="stylesheet" href="styles.css?v=1.1">
+<title>DPTV Recorder</title>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -57,8 +57,10 @@
       </div>
       <div class="preview" id="previewPanel">
         <div class="backdrop"></div>
-        <div class="no-video">Preview</div>
-        <div class="chan-logo-big" id="previewLogo">—</div>
+        <div class="no-video">Video Preview</div>
+        <div class="chan-logo-big" id="previewLogo">
+          <svg viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+        </div>
         <video id="previewVideo" muted playsinline></video>
         <div class="play-overlay" id="playOverlay">
           <div class="play-btn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
@@ -97,7 +99,7 @@
   <div class="modal modal-wide">
     <div class="modal-tabs">
       <button class="modal-tab active" data-tab="xc">XC Server</button>
-      <button class="modal-tab" data-tab="epg">EPG Sources</button>
+      <button class="modal-tab" data-tab="epg">EPG Source</button>
       <button class="modal-tab" data-tab="rec">Recording</button>
       <button class="modal-tab" data-tab="list">Recordings</button>
     </div>
@@ -114,17 +116,29 @@
     </div>
 
     <div class="modal-tab-panel" id="tabEpg" style="display:none">
-      <div class="modal-hint">Add XMLTV sources and select which source supplies the guide for this playlist.</div>
-      <div id="epgSourcesList" class="epg-sources-list"></div>
-      <div class="epg-source-form">
-        <label>Source name<br><input type="text" id="cfgEpgName" placeholder="Alternative XMLTV"></label>
-        <label>XMLTV URL<br><input type="url" id="cfgEpgUrl" placeholder="https://example.com/guide.xml"></label>
-        <div class="epg-source-grid"><label>Username (optional)<br><input type="text" id="cfgEpgUser"></label><label>Password (optional)<br><input type="password" id="cfgEpgPass"></label></div>
-        <label>Timezone when the XMLTV timestamp has no offset<br><select id="cfgEpgTimeZone"><option value="Australia/Perth">Australia/Perth</option><option value="Australia/Sydney">Australia/Sydney</option><option value="UTC">UTC</option></select></label>
-        <div class="modal-error" id="cfgEpgError"></div>
-        <div class="modal-actions"><button id="cfgEpgClose" class="btn-secondary">Close</button><button id="cfgEpgAdd" class="btn-primary">Test &amp; Add Source</button></div>
+      <label>Active EPG source<br>
+        <select id="epgSourceSelect"></select>
+      </label>
+      <div class="modal-hint">
+        By default, the guide's program data comes from your XC server's own <code>xmltv.php</code>.
+        If that's missing or unreliable for some channels (common with PPV/event channels), add a
+        dedicated XMLTV feed URL below and select it here instead. It replaces the EPG data entirely
+        on your next sync - channel matching still relies on <code>epg_channel_id</code>/<code>tvg-id</code>
+        lining up between your channel list and the feed.
+      </div>
+      <div class="epg-source-list" id="epgSourceList"></div>
+      <div class="epg-source-add">
+        <input type="text" id="epgSourceName" placeholder="Name (e.g. 'EPGShare')">
+        <input type="text" id="epgSourceUrl" placeholder="https://example.com/epg.xml">
+        <button id="epgSourceAdd" class="btn-secondary">Add source</button>
+      </div>
+      <div class="modal-error" id="epgSourceError"></div>
+      <div class="modal-actions">
+        <button id="epgCancel" class="btn-secondary">Cancel</button>
+        <button id="epgSave" class="btn-primary">Save &amp; Sync</button>
       </div>
     </div>
+
     <div class="modal-tab-panel" id="tabRec" style="display:none">
       <label>Start recording this many minutes early<br>
         <input type="number" id="cfgPadBefore" min="0" max="120" step="1"></label>
@@ -154,6 +168,6 @@
 </div>
 
 <script src="vendor/hls.min.js"></script>
-<script src="app.js?v=1.1"></script>
+<script src="app.js"></script>
 </body>
 </html>

@@ -41,23 +41,22 @@ async function performSync() {
     console.log(`[sync] got ${streams.length} channels`);
 
     syncState.phase = 'epg';
-    const activeId = Number(getSetting('active_epg_source_id', 0));
-    let source = activeId ? db.prepare('SELECT * FROM epg_sources WHERE id = ? AND enabled = 1').get(activeId) : null;
-    if (!source) source = db.prepare("SELECT * FROM epg_sources WHERE source_type = 'xc' AND enabled = 1 ORDER BY id LIMIT 1").get();
-    if (!source) throw new Error('No enabled EPG source is selected.');
+    const activeEpgSourceId = getSetting('active_epg_source_id', '');
     let xmltvText;
-    try {
-      xmltvText = source.source_type === 'xc'
-        ? await xc.fetchXmltv(host, username, password)
-        : await xc.fetchXmltvUrl(source.url, source.username || '', source.password || '');
-      db.prepare('UPDATE epg_sources SET last_sync_at = ?, last_error = NULL WHERE id = ?').run(Date.now(), source.id);
-    } catch (err) {
-      db.prepare('UPDATE epg_sources SET last_error = ? WHERE id = ?').run(err.message, source.id);
-      throw err;
+    if (activeEpgSourceId) {
+      const source = db.prepare('SELECT * FROM epg_sources WHERE id = ?').get(activeEpgSourceId);
+      if (!source) {
+        throw new Error(`Selected EPG source (id ${activeEpgSourceId}) no longer exists - pick another one in Settings.`);
+      }
+      console.log(`[sync] fetching EPG from custom source "${source.name}": ${source.url}`);
+      xmltvText = await xc.fetchGenericXmltv(source.url);
+    } else {
+      console.log('[sync] fetching EPG from XC server xmltv.php');
+      xmltvText = await xc.fetchXmltv(host, username, password);
     }
-    console.log(`[sync] fetched EPG source "${source.name}" (${xmltvText.length} bytes)`);
-    const { programmes } = parseXmltv(xmltvText, source.time_zone || 'Australia/Perth');
-    console.log(`[sync] parsed ${programmes.length} programmes from XMLTV`);
+    console.log(`[sync] fetched xmltv (${xmltvText.length} bytes)`);
+    const { programmes } = parseXmltv(xmltvText);
+    console.log(`[sync] parsed ${programmes.length} programmes from xmltv`);
 
     syncState.phase = 'saving';
     const now = Date.now();

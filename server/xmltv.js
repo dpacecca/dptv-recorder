@@ -64,7 +64,7 @@ function textOf(node) {
   return '';
 }
 
-function parseXmltv(xmlString, fallbackTimeZone = process.env.TZ || 'Australia/Perth') {
+function parseXmltv(xmlString) {
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
@@ -82,8 +82,8 @@ function parseXmltv(xmlString, fallbackTimeZone = process.env.TZ || 'Australia/P
 
   const programmes = asArray(tv.programme)
     .map((p) => {
-      const start = parseXmltvTime(p['@_start'], fallbackTimeZone);
-      const stop = parseXmltvTime(p['@_stop'], fallbackTimeZone);
+      const start = parseXmltvTime(p['@_start']);
+      const stop = parseXmltvTime(p['@_stop']);
       if (start === null || stop === null) return null;
       return {
         channel: p['@_channel'],

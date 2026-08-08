@@ -90,21 +90,24 @@ async function fetchXmltv(host, username, password, timeoutMs = 120000) {
   }
 }
 
-async function fetchXmltvUrl(url, username = '', password = '', timeoutMs = 120000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const headers = { 'User-Agent': USER_AGENT };
-    if (username || password) headers.Authorization = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
-    const res = await fetch(url, { signal: controller.signal, headers });
-    if (!res.ok) throw new Error(`EPG source responded ${res.status} ${res.statusText}`);
-    return await res.text();
-  } finally { clearTimeout(timer); }
-}
-
 function liveStreamUrl(host, username, password, streamId, ext = 'm3u8') {
   const base = normalizeHost(host);
   return `${base}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${streamId}.${ext}`;
+}
+
+// Fetches an XMLTV document from an arbitrary URL - used for custom/alternate
+// EPG sources that aren't the XC panel's own xmltv.php (e.g. a dedicated EPG
+// provider whose data is more reliable for PPV/event channels).
+async function fetchGenericXmltv(url, timeoutMs = 120000) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': USER_AGENT } });
+    if (!res.ok) throw new Error(`EPG source responded ${res.status} ${res.statusText}`);
+    return await res.text();
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 module.exports = {
@@ -114,7 +117,7 @@ module.exports = {
   getLiveStreams,
   xmltvUrl,
   fetchXmltv,
-  fetchXmltvUrl,
+  fetchGenericXmltv,
   liveStreamUrl,
   USER_AGENT,
 };
