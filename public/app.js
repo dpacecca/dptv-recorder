@@ -879,6 +879,24 @@
   function cssEscape(str) { return String(str).replace(/["\\]/g, '\\$&'); }
 
   // ---------------- init ----------------
+  // ---------------- categories collapse toggle ----------------
+  const mainEl = document.querySelector('.main');
+  const collapseBtn = document.getElementById('collapseBtn');
+  const expandBtn = document.getElementById('expandBtn');
+
+  function setCategoriesCollapsed(collapsed) {
+    mainEl.classList.toggle('categories-collapsed', collapsed);
+    expandBtn.style.display = collapsed ? 'flex' : 'none';
+    try { localStorage.setItem('dptv_categories_collapsed', collapsed ? '1' : '0'); } catch {}
+  }
+  collapseBtn.addEventListener('click', () => setCategoriesCollapsed(true));
+  expandBtn.addEventListener('click', () => setCategoriesCollapsed(false));
+  try {
+    setCategoriesCollapsed(localStorage.getItem('dptv_categories_collapsed') === '1');
+  } catch {
+    setCategoriesCollapsed(false);
+  }
+
   async function init() {
     fetch('/api/version').then((r) => r.json()).then((v) => {
       document.getElementById('versionBadge').textContent = 'v' + v.version;

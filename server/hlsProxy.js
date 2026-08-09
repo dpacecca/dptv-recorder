@@ -30,9 +30,34 @@ setInterval(() => {
   for (const [k, v] of tokenMap) if (v.expires < now) tokenMap.delete(k);
 }, 10 * 60 * 1000).unref();
 
+// Pulls a real file extension off a URL's path (ignoring query strings), so
+// our proxy URLs can carry the same extension the upstream URL had. ffmpeg's
+// HLS demuxer (and possibly hls.js in some cases) validates segment URLs
+// against a whitelist of recognized extensions - an extension-less proxy URL
+// like "/api/hls?u=abc123" gets flatly rejected ("not in
+// allowed_segment_extensions"), even though the actual bytes are fine.
+function extractExt(url, fallback) {
+  try {
+    const u = new URL(url);
+    const last = u.pathname.split('/').pop() || '';
+    const m = last.match(/\.([a-zA-Z0-9]{2,5})$/);
+    if (m) return m[1].toLowerCase();
+  } catch {
+    // fall through to fallback
+  }
+  return fallback;
+}
+
+function proxyPathFor(url, fallbackExt) {
+  const token = makeToken(url);
+  const ext = extractExt(url, fallbackExt);
+  return `/api/hls/${token}.${ext}`;
+}
+
 // Rewrites an m3u8 playlist body so every referenced URI (variant playlist or
 // segment) is resolved to an absolute upstream URL and replaced with an
-// opaque /api/hls?u=<token> reference back through this proxy.
+// opaque /api/hls/<token>.<ext> reference back through this proxy - preserving
+// the real extension so downstream players/ffmpeg don't reject it.
 function rewritePlaylist(body, baseUrl) {
   const lines = body.split(/\r?\n/);
   const out = lines.map((line) => {
@@ -44,17 +69,17 @@ function rewritePlaylist(body, baseUrl) {
     } catch {
       return line;
     }
-    const token = makeToken(absolute);
-    return `/api/hls?u=${token}`;
+    return proxyPathFor(absolute, 'ts');
   });
   return out.join('\n');
 }
 
-// Express handler: GET /api/hls?u=<token>
-// First call for a channel uses a token seeded server-side (see routes.js);
-// every subsequent nested reference uses a token minted by rewritePlaylist above.
+// Express handler: GET /api/hls/:tokenExt where tokenExt is "<token>.<ext>"
+// (the extension is cosmetic/for whitelist purposes only - only the token
+// portion is actually used to resolve the real upstream URL).
 async function hlsProxyHandler(req, res) {
-  const token = req.query.u;
+  const tokenExt = req.params.tokenExt || '';
+  const token = tokenExt.includes('.') ? tokenExt.slice(0, tokenExt.lastIndexOf('.')) : tokenExt;
   if (!token) return res.status(400).send('missing token');
   const url = resolveToken(token);
   if (!url) return res.status(410).send('stream link expired, reselect the channel');
@@ -87,4 +112,4 @@ async function hlsProxyHandler(req, res) {
   }
 }
 
-module.exports = { makeToken, hlsProxyHandler };
+module.exports = { makeToken, proxyPathFor, hlsProxyHandler };

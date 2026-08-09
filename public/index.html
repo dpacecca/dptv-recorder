@@ -41,14 +41,17 @@
 
 <div class="main">
 
-  <div class="categories">
+  <div class="categories" id="categoriesPanel">
     <div class="cat-search">
       <input type="text" placeholder="Filter categories..." id="catFilter">
+      <button id="collapseBtn" class="collapse-btn" title="Hide categories">◀</button>
     </div>
     <div class="cat-list" id="catList">
       <div class="empty-hint" id="catEmptyHint">No categories yet. Connect your XC server and sync to get started.</div>
     </div>
   </div>
+
+  <button id="expandBtn" class="expand-btn" title="Show categories" style="display:none">▶</button>
 
   <div class="right">
 

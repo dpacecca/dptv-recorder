@@ -82,6 +82,10 @@ function startRecording(row) {
 
   const args = [
     '-y',
+    '-allowed_extensions', 'ALL', // belt-and-suspenders: proxy URLs now carry real extensions,
+                                  // but some providers use segment extensions outside ffmpeg's
+                                  // built-in whitelist (e.g. unusual fMP4 naming) - this avoids
+                                  // that whole class of "not in allowed_segment_extensions" failures
     '-i', streamUrl,
     '-c', 'copy',
     '-f', 'mpegts',

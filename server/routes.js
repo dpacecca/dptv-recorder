@@ -2,7 +2,7 @@ const express = require('express');
 const { db, getSetting, setSetting } = require('./db');
 const xc = require('./xcClient');
 const { performSync, scheduleAutoSync, getSyncState } = require('./sync');
-const { makeToken, hlsProxyHandler } = require('./hlsProxy');
+const { proxyPathFor, hlsProxyHandler } = require('./hlsProxy');
 const recorder = require('./recorder');
 
 const router = express.Router();
@@ -227,10 +227,9 @@ router.get('/stream/:channelId', (req, res) => {
   if (!channel) return res.status(404).send('channel not found');
 
   const upstreamUrl = xc.liveStreamUrl(host, username, password, channel.id, 'm3u8');
-  const token = makeToken(upstreamUrl);
-  res.redirect(`/api/hls?u=${token}`);
+  res.redirect(proxyPathFor(upstreamUrl, 'm3u8'));
 });
 
-router.get('/hls', hlsProxyHandler);
+router.get('/hls/:tokenExt', hlsProxyHandler);
 
 module.exports = router;
