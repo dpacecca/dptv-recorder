@@ -110,7 +110,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .main{ flex:1; display:grid; grid-template-columns: 1fr 2fr; min-height:0; }
 
 /* ---------- LEFT: CATEGORIES ---------- */
-.categories{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; }
+.categories{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; min-width:0; }
 .categories .cat-search{ padding:14px; border-bottom:1px solid var(--border); }
 .categories .cat-search input{
   width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
@@ -137,18 +137,18 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .right{ display:grid; grid-template-rows: 1fr 2fr; min-height:0; }
 
 .detail-row{ display:grid; grid-template-columns: 1fr 1fr; border-bottom:1px solid var(--border); min-height:0; }
-.synopsis{ background:var(--panel); border-right:1px solid var(--border); padding:18px 22px; overflow-y:auto; min-height:0; }
+.synopsis{ background:var(--panel); border-right:1px solid var(--border); padding:18px 22px; overflow-y:auto; min-height:0; min-width:0; }
 .synopsis .placeholder{
   height:100%; display:flex; align-items:center; justify-content:center;
   color:var(--text-faint); font-size:13px; text-align:center; padding:20px;
 }
-.synopsis .prog-title{ font-family:var(--font-display); font-size:24px; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px; }
+.synopsis .prog-title{ font-family:var(--font-display); font-size:24px; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px; overflow-wrap:break-word; word-break:break-word; }
 .synopsis .prog-meta{
   display:flex; gap:10px; align-items:center; font-family:var(--font-mono);
   font-size:11px; color:var(--amber); margin-bottom:12px; flex-wrap:wrap;
 }
 .synopsis .prog-meta .chan{ color:var(--text-dim); font-family:var(--font-body); }
-.synopsis .prog-desc{ color:var(--text-dim); line-height:1.6; font-size:13px; }
+.synopsis .prog-desc{ color:var(--text-dim); line-height:1.6; font-size:13px; overflow-wrap:break-word; word-break:break-word; }
 .synopsis .live-tag{
   background:var(--live); color:#fff; font-size:10px; font-weight:700; text-transform:uppercase;
   padding:2px 6px; border-radius:3px; letter-spacing:0.5px;
@@ -178,7 +178,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 
 .preview{
   background:#05070a; position:relative; display:flex; align-items:center; justify-content:center;
-  overflow:hidden; min-height:0; cursor:pointer;
+  overflow:hidden; min-height:0; min-width:0; cursor:pointer;
   border: 1px solid var(--border);
 }
 .preview .backdrop{

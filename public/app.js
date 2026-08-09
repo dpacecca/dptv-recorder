@@ -436,17 +436,6 @@
     [...els.dayChips.children].forEach((chip, i) => chip.classList.toggle('active', i === day));
   });
 
-  // A plain vertical mouse-wheel scroll does NOT pan a horizontally-scrolling
-  // element by default in most browsers - only trackpad horizontal swipes or
-  // shift+wheel do. Translate normal wheel scroll into horizontal movement so
-  // scrolling the guide "just works" regardless of input device.
-  els.epgBody.addEventListener('wheel', (e) => {
-    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-      els.epgBody.scrollLeft += e.deltaY;
-      e.preventDefault();
-    }
-  }, { passive: false });
-
   els.jumpNow.addEventListener('click', () => {
     const nowOffsetMin = (Date.now() - timelineStart) / 60000;
     els.epgBody.scrollLeft = Math.max(0, nowOffsetMin * PX_PER_MIN - 300);
