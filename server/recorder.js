@@ -114,7 +114,7 @@ function startRecording(row) {
       db.prepare(`UPDATE recordings SET status='completed' WHERE id=?`).run(row.id);
     } else {
       db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`)
-        .run(`ffmpeg exited with code ${code}: ${stderrTail.split('\n').slice(-3).join(' ').trim()}`, row.id);
+        .run(`ffmpeg exited with code ${code}: ${stderrTail.split('\n').filter(Boolean).slice(-8).join(' | ').trim()}`, row.id);
     }
   });
 

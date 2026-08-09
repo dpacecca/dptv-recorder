@@ -94,6 +94,10 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   border-radius:6px; width:34px; height:34px; font-size:15px; cursor:pointer;
 }
 #settingsBtn:hover{ color:var(--text); border-color:var(--amber); }
+.version-badge{
+  font-family:var(--font-mono); font-size:10px; color:var(--text-faint);
+  padding:2px 6px; border:1px solid var(--border); border-radius:4px;
+}
 #recordingsBtn{
   position:relative;
   background:var(--panel-2); color:var(--text-dim); border:1px solid var(--border);
@@ -397,6 +401,10 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .rec-item .rec-info{ display:flex; flex-direction:column; gap:3px; min-width:0; flex:1; }
 .rec-item .rec-title{ font-size:13.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rec-item .rec-meta{ font-size:11px; color:var(--text-faint); font-family:var(--font-mono); }
+.rec-item .rec-error{
+  font-size:10.5px; color:var(--live); font-family:var(--font-mono);
+  overflow-wrap:break-word; word-break:break-word; margin-top:2px;
+}
 .rec-item .rec-status{
   font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
   padding:3px 8px; border-radius:10px; white-space:nowrap;

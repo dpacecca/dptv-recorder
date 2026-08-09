@@ -563,7 +563,7 @@
               <span class="record-note">Manage recordings under Settings → Recordings.</span>`;
     } else if (status === 'failed') {
       html = `<button class="record-btn state-failed" id="recordBtn" data-action="retry">⚠ Retry Recording</button>
-              <span class="record-note">${escapeHtml((row.error || '').slice(0, 90))}</span>`;
+              <span class="record-note" title="${escapeAttr(row.error || '')}">${escapeHtml((row.error || '').slice(0, 300))}</span>`;
     }
     control.innerHTML = html;
 
@@ -651,7 +651,8 @@
           ${left}
           <div class="rec-info">
             <div class="rec-title">${escapeHtml(r.program_title)} <span style="color:var(--text-faint)">— ${escapeHtml(r.channel_name)}</span></div>
-            <div class="rec-meta">${fmtTime(r.rec_start)} – ${fmtTime(r.rec_end)}${r.error ? ' · ' + escapeHtml(r.error.slice(0, 70)) : ''}</div>
+            <div class="rec-meta">${fmtTime(r.rec_start)} – ${fmtTime(r.rec_end)}</div>
+            ${r.error ? `<div class="rec-error">${escapeHtml(r.error)}</div>` : ''}
           </div>
           <span class="rec-status ${r.status}">${r.status}</span>
           ${rightAction}
@@ -879,6 +880,12 @@
 
   // ---------------- init ----------------
   async function init() {
+    fetch('/api/version').then((r) => r.json()).then((v) => {
+      document.getElementById('versionBadge').textContent = 'v' + v.version;
+      document.getElementById('versionBadge').title = `Build: ${v.buildTime} · Node ${v.node}`;
+      console.log(`%cDPTV Recorder v${v.version}%c - build ${v.buildTime}`, 'font-weight:bold;color:#F2A93B', 'color:inherit');
+    }).catch(() => {});
+
     renderTimescale();
     renderDayChips();
     try {
