@@ -111,7 +111,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 }
 
 /* ---------- MAIN LAYOUT ---------- */
-.main{ flex:1; display:grid; grid-template-columns: 1fr 2fr; min-height:0; }
+.main{ flex:1; display:grid; grid-template-columns: 1fr 2fr; min-height:0; min-width:0; }
 
 /* ---------- LEFT: CATEGORIES ---------- */
 .categories{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; min-width:0; }
@@ -138,7 +138,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .empty-hint{ color:var(--text-faint); font-size:12.5px; padding:20px; text-align:center; line-height:1.5; }
 
 /* ---------- RIGHT SIDE ---------- */
-.right{ display:grid; grid-template-rows: 1fr 2fr; min-height:0; }
+.right{ display:grid; grid-template-rows: 1fr 2fr; min-height:0; min-width:0; }
 
 .detail-row{ display:grid; grid-template-columns: 1fr 1fr; border-bottom:1px solid var(--border); min-height:0; }
 .synopsis{ background:var(--panel); border-right:1px solid var(--border); padding:18px 22px; overflow-y:auto; min-height:0; min-width:0; }
@@ -225,7 +225,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 }
 
 /* ---- EPG ---- */
-.epg-panel{ display:flex; flex-direction:column; min-height:0; background:var(--bg); }
+.epg-panel{ display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--bg); }
 .epg-controls{ display:flex; align-items:center; gap:14px; padding:10px 16px; border-bottom:1px solid var(--border); background:var(--panel); }
 .epg-controls .search-wrap{ flex:1; max-width:340px; position:relative; }
 .epg-controls input[type=text]{
