@@ -111,21 +111,33 @@ async function hlsProxyHandler(req, res) {
       return res.status(upstream.status).send(`upstream error (${upstream.status})${body ? ': ' + body.slice(0, 200) : ''}`);
     }
 
-    const contentType = upstream.headers.get('content-type') || '';
-    const isPlaylist =
-      contentType.includes('mpegurl') || url.endsWith('.m3u8') || contentType.includes('vnd.apple');
+    // IMPORTANT: many XC panels redirect the initial request to a completely
+    // different edge/CDN URL (different domain, different session tokens,
+    // sometimes even a different-looking "channel id"). fetch() follows that
+    // redirect automatically, but any *relative* URLs inside the playlist we
+    // just got need to be resolved against where the content actually came
+    // from (upstream.url) - NOT the URL we originally requested. Using the
+    // wrong base here silently constructs nonsense hybrid URLs that the
+    // panel correctly rejects as invalid.
+    const finalUrl = upstream.url || url;
 
-    if (isPlaylist) {
-      const text = await upstream.text();
+    const buf = Buffer.from(await upstream.arrayBuffer());
+
+    // Content-sniff rather than trust headers/extensions - some panels send
+    // playlists with a generic or missing Content-Type, which would silently
+    // break detection if we relied on that alone.
+    const looksLikePlaylist = buf.slice(0, 7).toString('utf8') === '#EXTM3U';
+
+    if (looksLikePlaylist) {
       res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
       res.setHeader('Cache-Control', 'no-store');
-      return res.send(rewritePlaylist(text, url));
+      return res.send(rewritePlaylist(buf.toString('utf8'), finalUrl));
     }
 
     // binary segment (.ts / .aac / etc) - stream through as-is
+    const contentType = upstream.headers.get('content-type') || '';
     res.setHeader('Content-Type', contentType || 'video/mp2t');
     res.setHeader('Cache-Control', 'no-store');
-    const buf = Buffer.from(await upstream.arrayBuffer());
     return res.send(buf);
   } catch (err) {
     return res.status(502).send('proxy error: ' + err.message);
