@@ -54,22 +54,42 @@ function proxyPathFor(url, fallbackExt) {
   return `/api/hls/${token}.${ext}`;
 }
 
-// Rewrites an m3u8 playlist body so every referenced URI (variant playlist or
-// segment) is resolved to an absolute upstream URL and replaced with an
-// opaque /api/hls/<token>.<ext> reference back through this proxy - preserving
-// the real extension so downstream players/ffmpeg don't reject it.
+// Rewrites an m3u8 playlist body so every referenced URI (variant playlist,
+// segment, encryption key, init segment, alternate audio/subtitle track) is
+// resolved to an absolute upstream URL and replaced with an opaque
+// /api/hls/<token>.<ext> reference back through this proxy - preserving the
+// real extension so downstream players/ffmpeg don't reject it.
+function rewriteUri(uri, baseUrl, fallbackExt) {
+  let absolute;
+  try {
+    absolute = new URL(uri, baseUrl).toString();
+  } catch {
+    return null;
+  }
+  return proxyPathFor(absolute, fallbackExt);
+}
+
 function rewritePlaylist(body, baseUrl) {
   const lines = body.split(/\r?\n/);
   const out = lines.map((line) => {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) return line;
-    let absolute;
-    try {
-      absolute = new URL(trimmed, baseUrl).toString();
-    } catch {
-      return line;
+    if (!trimmed) return line;
+
+    if (trimmed.startsWith('#')) {
+      // Tag lines can carry their own URI="..." attribute - e.g.
+      // #EXT-X-KEY:METHOD=AES-128,URI="...",  #EXT-X-MAP:URI="init.mp4",
+      // #EXT-X-MEDIA:TYPE=AUDIO,URI="audio.m3u8". Leaving these unrewritten
+      // means the browser/ffmpeg tries to fetch them directly from the XC
+      // server (credentials embedded in the path, and blocked by CORS in a
+      // browser context) instead of through this proxy.
+      return line.replace(/URI="([^"]+)"/g, (match, uri) => {
+        const path = rewriteUri(uri, baseUrl, 'key');
+        return path ? `URI="${path}"` : match;
+      });
     }
-    return proxyPathFor(absolute, 'ts');
+
+    const path = rewriteUri(trimmed, baseUrl, 'ts');
+    return path || line;
   });
   return out.join('\n');
 }

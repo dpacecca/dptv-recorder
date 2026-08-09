@@ -8,6 +8,16 @@ const PORT = process.env.PORT || 3000;
 const TICK_MS = 15000;
 
 fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+console.log(`[recorder] recordings will be written to: ${RECORDINGS_DIR}`);
+if (RECORDINGS_DIR !== '/recordings') {
+  console.warn(
+    `[recorder] WARNING: RECORDINGS_PATH is set to "${RECORDINGS_DIR}", not the default "/recordings". ` +
+    `This must be a path INSIDE the container that you've mounted a volume to (e.g. via docker-compose's ` +
+    `"volumes:" section) - it should NOT be a host filesystem path like "/mnt/user/...". If it is a host ` +
+    `path, ffmpeg is writing files inside the container's own filesystem, which won't show up on your host ` +
+    `and will be lost on restart. Check your container's environment variables/volume mappings.`
+  );
+}
 
 // recordingId -> { proc }
 const activeProcs = new Map();
@@ -80,6 +90,8 @@ function startRecording(row) {
   const durationSec = Math.max(1, Math.round((row.rec_end - Date.now()) / 1000));
   const streamUrl = `http://127.0.0.1:${PORT}/api/stream/${encodeURIComponent(row.channel_id)}`;
 
+  console.log(`[recorder] starting recording #${row.id} "${row.program_title}" -> ${outputPath} (${durationSec}s)`);
+
   const args = [
     '-y',
     '-allowed_extensions', 'ALL', // belt-and-suspenders: proxy URLs now carry real extensions,
@@ -97,6 +109,7 @@ function startRecording(row) {
   try {
     proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
   } catch (err) {
+    console.error(`[recorder] #${row.id} failed to spawn ffmpeg:`, err.message);
     db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run('Could not start ffmpeg: ' + err.message, row.id);
     return;
   }
@@ -115,8 +128,14 @@ function startRecording(row) {
     if (!current || current.status === 'cancelled') return; // cancelRecording already handled cleanup
 
     if (code === 0) {
+      const size = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : -1;
+      console.log(`[recorder] #${row.id} completed -> ${outputPath} (${size >= 0 ? size + ' bytes' : 'FILE NOT FOUND ON DISK'})`);
+      if (size <= 0) {
+        console.warn(`[recorder] #${row.id} ffmpeg exited 0 but the output file is missing or empty - check that RECORDINGS_PATH ("${RECORDINGS_DIR}") is actually writable and correctly volume-mounted.`);
+      }
       db.prepare(`UPDATE recordings SET status='completed' WHERE id=?`).run(row.id);
     } else {
+      console.error(`[recorder] #${row.id} ffmpeg exited with code ${code}`);
       db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`)
         .run(`ffmpeg exited with code ${code}: ${stderrTail.split('\n').filter(Boolean).slice(-8).join(' | ').trim()}`, row.id);
     }
