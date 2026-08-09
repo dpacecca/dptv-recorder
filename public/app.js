@@ -50,6 +50,7 @@
     cfgCancel: document.getElementById('cfgCancel'),
     cfgPadBefore: document.getElementById('cfgPadBefore'),
     cfgPadAfter: document.getElementById('cfgPadAfter'),
+    cfgRecFormat: document.getElementById('cfgRecFormat'),
     cfgRecPath: document.getElementById('cfgRecPath'),
     cfgRecError: document.getElementById('cfgRecError'),
     cfgRecSave: document.getElementById('cfgRecSave'),
@@ -144,6 +145,7 @@
     const rec = await api('/settings/recording');
     els.cfgPadBefore.value = rec.padBeforeMin;
     els.cfgPadAfter.value = rec.padAfterMin;
+    els.cfgRecFormat.value = rec.recordFormat || 'ts';
     els.cfgRecPath.textContent = rec.recordingsPath;
     await loadEpgSources();
     switchSettingsTab('xc');
@@ -181,6 +183,7 @@
         body: JSON.stringify({
           padBeforeMin: Number(els.cfgPadBefore.value) || 0,
           padAfterMin: Number(els.cfgPadAfter.value) || 0,
+          recordFormat: els.cfgRecFormat.value,
         }),
       });
       closeSettingsModal();

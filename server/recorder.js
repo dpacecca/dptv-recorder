@@ -30,14 +30,19 @@ function padMinutes() {
   };
 }
 
-function safeFilenamePart(str) {
-  return String(str).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+function recordFormat() {
+  const f = getSetting('record_format', 'ts');
+  return f === 'mkv' ? 'mkv' : 'ts'; // whitelist - never trust an unexpected stored value
 }
 
-function buildFilename(row) {
+function safeFilenamePart(str) {
+  return String(str).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 100);
+}
+
+function buildFilename(row, ext) {
   const d = new Date(row.rec_start);
   const stamp = d.toISOString().replace(/[:T]/g, '-').slice(0, 16);
-  return `${safeFilenamePart(row.channel_name)}_${safeFilenamePart(row.program_title)}_${stamp}.ts`;
+  return `${safeFilenamePart(row.program_title)}_${stamp}.${ext}`;
 }
 
 function rowById(id) {
@@ -85,12 +90,15 @@ function scheduleRecording({ channelId, channelName, programTitle, programStart,
 function startRecording(row) {
   if (activeProcs.has(row.id)) return;
 
-  const filename = buildFilename(row);
+  const format = recordFormat();
+  const ext = format === 'mkv' ? 'mkv' : 'ts';
+  const muxer = format === 'mkv' ? 'matroska' : 'mpegts';
+  const filename = buildFilename(row, ext);
   const outputPath = path.join(RECORDINGS_DIR, filename);
   const durationSec = Math.max(1, Math.round((row.rec_end - Date.now()) / 1000));
   const streamUrl = `http://127.0.0.1:${PORT}/api/stream/${encodeURIComponent(row.channel_id)}`;
 
-  console.log(`[recorder] starting recording #${row.id} "${row.program_title}" -> ${outputPath} (${durationSec}s)`);
+  console.log(`[recorder] starting recording #${row.id} "${row.program_title}" -> ${outputPath} (${durationSec}s, ${muxer})`);
 
   const args = [
     '-y',
@@ -99,8 +107,8 @@ function startRecording(row) {
                                   // built-in whitelist (e.g. unusual fMP4 naming) - this avoids
                                   // that whole class of "not in allowed_segment_extensions" failures
     '-i', streamUrl,
-    '-c', 'copy',
-    '-f', 'mpegts',
+    '-c', 'copy', // always stream copy - never re-encode, regardless of container
+    '-f', muxer,
     '-t', String(durationSec),
     outputPath,
   ];
@@ -201,12 +209,13 @@ function init() {
 
 function getRecordingSettings() {
   const { before, after } = padMinutes();
-  return { padBeforeMin: before, padAfterMin: after, recordingsPath: RECORDINGS_DIR };
+  return { padBeforeMin: before, padAfterMin: after, recordingsPath: RECORDINGS_DIR, recordFormat: recordFormat() };
 }
 
-function setRecordingSettings({ padBeforeMin, padAfterMin }) {
+function setRecordingSettings({ padBeforeMin, padAfterMin, recordFormat: fmt }) {
   if (padBeforeMin !== undefined) setSetting('record_pad_before_min', Math.max(0, Number(padBeforeMin) || 0));
   if (padAfterMin !== undefined) setSetting('record_pad_after_min', Math.max(0, Number(padAfterMin) || 0));
+  if (fmt !== undefined) setSetting('record_format', fmt === 'mkv' ? 'mkv' : 'ts');
 }
 
 module.exports = {

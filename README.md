@@ -43,11 +43,17 @@ a badge with the number of active/scheduled recordings.
 **Settings → Recording tab** lets you set:
 - Minutes to start early (padding before the scheduled start)
 - Minutes to keep recording after the scheduled end (padding after)
+- Output format: raw `.ts`, or remux to `.mkv` (recommended - same
+  `ffmpeg -c copy` stream copy either way, zero re-encoding/quality loss;
+  `.mkv` just repackages the same audio/video into a container that plays
+  back and seeks more reliably in Plex than raw broadcast `.ts`)
 
 Recordings are captured with `ffmpeg -c copy` (stream copy, no re-encoding)
-straight to **raw MPEG-TS (`.ts`)** files, using the same internal HLS proxy
-the preview player uses — so nothing needs your XC credentials except the
-backend itself.
+using the same internal HLS proxy the preview player uses — so nothing needs
+your XC credentials except the backend itself. Filenames are based on the
+program title alone (not the channel name too), since some providers embed
+the event name directly in the channel name for PPV/event channels, which
+made the old channel+title filename redundant.
 
 ### Where recordings are stored
 

@@ -148,7 +148,15 @@
         <input type="number" id="cfgPadBefore" min="0" max="120" step="1"></label>
       <label>Keep recording this many minutes after the program ends<br>
         <input type="number" id="cfgPadAfter" min="0" max="120" step="1"></label>
-      <div class="modal-hint">Recordings are written as raw .ts inside the container at
+      <label>Output format<br>
+        <select id="cfgRecFormat">
+          <option value="ts">Raw .ts (no processing)</option>
+          <option value="mkv">Remux to .mkv (recommended - better Plex compatibility, same quality)</option>
+        </select></label>
+      <div class="modal-hint">Both options stream-copy only (no re-encoding, no quality loss, same CPU
+        cost as now) - .mkv just repackages the same video/audio into a container that seeks and plays
+        back more reliably in Plex than raw broadcast .ts.</div>
+      <div class="modal-hint">Recordings are written inside the container at
         <code id="cfgRecPath">/recordings</code>, which maps to the <code>RECORDINGS_DIR</code>
         folder you set in <code>.env</code> / <code>docker-compose.yml</code> on the host.</div>
       <div class="modal-error" id="cfgRecError"></div>

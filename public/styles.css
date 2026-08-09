@@ -348,7 +348,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .modal.modal-wide{ width:640px; max-height:78vh; }
 .modal h2{ font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.5px; font-size:20px; }
 .modal label{ font-size:12px; color:var(--text-dim); display:flex; flex-direction:column; gap:6px; }
-.modal input{
+.modal input, .modal select{
   background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:9px 10px;
   color:var(--text); font-size:13px; margin-top:4px;
 }
