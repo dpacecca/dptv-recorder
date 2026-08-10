@@ -60,8 +60,8 @@ async function performSync() {
 
     syncState.phase = 'saving';
     const now = Date.now();
-    const windowStart = now - 24 * 60 * 60 * 1000;      // keep a day of history
-    const windowEnd = now + 8 * 24 * 60 * 60 * 1000;    // keep up to 8 days ahead
+    const retentionCutoff = now - 24 * 60 * 60 * 1000; // wipe programs 24h after they finish, not after they started
+    const windowEnd = now + 8 * 24 * 60 * 60 * 1000;   // keep up to 8 days ahead
 
     const skipped = { categories: 0, channels: 0, programmes: 0 };
 
@@ -125,12 +125,14 @@ async function performSync() {
       // Programs are upserted, not wiped - a full wipe-and-reinsert every
       // sync briefly empties the table and touches every row even when
       // nothing changed. Prune only what's fallen outside the retention
-      // window, then insert-or-update everything else by its natural key
-      // (channel + start + stop). Programmes that disappear from the source
-      // but are still inside the window are left alone rather than deleted -
-      // a program the provider stops listing doesn't necessarily mean it's
+      // window (a program is kept until 24h after it FINISHES, not 24h
+      // after it started - a long program shouldn't vanish mid-air), then
+      // insert-or-update everything else by its natural key (channel +
+      // start + stop). Programmes that disappear from the source but are
+      // still inside the window are left alone rather than deleted - a
+      // program the provider stops listing doesn't necessarily mean it's
       // gone, and this avoids flickering the guide on every sync.
-      db.prepare('DELETE FROM programs WHERE start < ? OR start > ?').run(windowStart, windowEnd);
+      db.prepare('DELETE FROM programs WHERE stop < ? OR start > ?').run(retentionCutoff, windowEnd);
       const upsertProg = db.prepare(`
         INSERT INTO programs (epg_channel_id, title, description, start, stop)
         VALUES (?, ?, ?, ?, ?)
@@ -141,7 +143,7 @@ async function performSync() {
       `);
       let touched = 0;
       programmes.forEach((p) => {
-        if (p.start < windowStart || p.start > windowEnd) return;
+        if (p.stop < retentionCutoff || p.start > windowEnd) return;
         if (!p.channel) { skipped.programmes++; return; }
         try {
           const info = upsertProg.run(String(p.channel), p.title || '(untitled)', p.description || '', p.start, p.stop);
@@ -177,6 +179,14 @@ async function performSync() {
   return syncState;
 }
 
+function pruneOldPrograms() {
+  const retentionCutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const info = db.prepare('DELETE FROM programs WHERE stop < ?').run(retentionCutoff);
+  if (info.changes > 0) {
+    console.log(`[cleanup] pruned ${info.changes} program(s) that finished more than 24h ago`);
+  }
+}
+
 function scheduleAutoSync(hours) {
   if (cronTask) {
     cronTask.stop();
@@ -196,6 +206,12 @@ function scheduleAutoSync(hours) {
 function initScheduler() {
   const hours = Number(getSetting('auto_sync_hours', 4)) || 0;
   scheduleAutoSync(hours);
+
+  // Independent of sync (which only prunes as a side effect of running at
+  // all) - guarantees the 24h-after-finish retention promise holds even if
+  // auto-sync is off or set to a long interval.
+  pruneOldPrograms();
+  setInterval(pruneOldPrograms, 60 * 60 * 1000);
 }
 
-module.exports = { performSync, scheduleAutoSync, initScheduler, getSyncState };
+module.exports = { performSync, scheduleAutoSync, initScheduler, getSyncState, pruneOldPrograms };
