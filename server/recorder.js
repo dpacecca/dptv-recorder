@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { db, getSetting, setSetting } = require('./db');
+const notifier = require('./notifier');
 
 const RECORDINGS_DIR = process.env.RECORDINGS_PATH || '/recordings';
 const PORT = process.env.PORT || 3000;
@@ -119,6 +120,7 @@ function startRecording(row) {
   } catch (err) {
     console.error(`[recorder] #${row.id} failed to spawn ffmpeg:`, err.message);
     db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run('Could not start ffmpeg: ' + err.message, row.id);
+    notifier.notifyRecordingFailed(row.program_title, 'Could not start ffmpeg: ' + err.message);
     return;
   }
 
@@ -129,6 +131,7 @@ function startRecording(row) {
 
   db.prepare(`UPDATE recordings SET status='recording', filename=? WHERE id=?`).run(filename, row.id);
   activeProcs.set(row.id, { proc });
+  notifier.notifyRecordingStarted(row.program_title);
 
   proc.on('close', (code) => {
     activeProcs.delete(row.id);
@@ -142,16 +145,19 @@ function startRecording(row) {
         console.warn(`[recorder] #${row.id} ffmpeg exited 0 but the output file is missing or empty - check that RECORDINGS_PATH ("${RECORDINGS_DIR}") is actually writable and correctly volume-mounted.`);
       }
       db.prepare(`UPDATE recordings SET status='completed' WHERE id=?`).run(row.id);
+      notifier.notifyRecordingCompleted(row.program_title);
     } else {
       console.error(`[recorder] #${row.id} ffmpeg exited with code ${code}`);
-      db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`)
-        .run(`ffmpeg exited with code ${code}: ${stderrTail.split('\n').filter(Boolean).slice(-8).join(' | ').trim()}`, row.id);
+      const errMsg = `ffmpeg exited with code ${code}: ${stderrTail.split('\n').filter(Boolean).slice(-8).join(' | ').trim()}`;
+      db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run(errMsg, row.id);
+      notifier.notifyRecordingFailed(row.program_title, errMsg);
     }
   });
 
   proc.on('error', (err) => {
     activeProcs.delete(row.id);
     db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run('ffmpeg error: ' + err.message, row.id);
+    notifier.notifyRecordingFailed(row.program_title, 'ffmpeg error: ' + err.message);
   });
 }
 

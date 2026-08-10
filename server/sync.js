@@ -122,21 +122,36 @@ async function performSync() {
         }
       });
 
-      db.prepare('DELETE FROM programs').run(); // full refresh each sync keeps EPG consistent
-      const insProg = db.prepare(`
+      // Programs are upserted, not wiped - a full wipe-and-reinsert every
+      // sync briefly empties the table and touches every row even when
+      // nothing changed. Prune only what's fallen outside the retention
+      // window, then insert-or-update everything else by its natural key
+      // (channel + start + stop). Programmes that disappear from the source
+      // but are still inside the window are left alone rather than deleted -
+      // a program the provider stops listing doesn't necessarily mean it's
+      // gone, and this avoids flickering the guide on every sync.
+      db.prepare('DELETE FROM programs WHERE start < ? OR start > ?').run(windowStart, windowEnd);
+      const upsertProg = db.prepare(`
         INSERT INTO programs (epg_channel_id, title, description, start, stop)
         VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(epg_channel_id, start, stop) DO UPDATE SET
+          title = excluded.title,
+          description = excluded.description
+        WHERE title != excluded.title OR description IS NOT excluded.description
       `);
+      let touched = 0;
       programmes.forEach((p) => {
         if (p.start < windowStart || p.start > windowEnd) return;
         if (!p.channel) { skipped.programmes++; return; }
         try {
-          insProg.run(String(p.channel), p.title || '(untitled)', p.description || '', p.start, p.stop);
+          const info = upsertProg.run(String(p.channel), p.title || '(untitled)', p.description || '', p.start, p.stop);
+          if (info.changes > 0) touched++;
         } catch (err) {
           skipped.programmes++;
           console.warn('[sync] skipped a malformed programme:', err.message, JSON.stringify(p).slice(0, 200));
         }
       });
+      console.log(`[sync] programs: ${touched} added/updated out of ${programmes.length} in the source feed`);
     });
     tx();
 

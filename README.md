@@ -73,9 +73,13 @@ host. Raw `.ts` isn't small, so make sure there's room.
 ## How it works
 
 - **Sync** (`server/sync.js`) pulls live categories, live streams, and the
-  full `xmltv.php` EPG from your XC server into SQLite (`server/db.js`),
-  doing a full replace each run. Programs outside a ~9-day window are
-  dropped to keep the DB small.
+  full `xmltv.php` EPG from your XC server into SQLite (`server/db.js`).
+  Categories/channels are fully replaced each run (cheap, and a channel
+  lineup doesn't usually need history). Programs are upserted instead -
+  matched by (channel, start, stop), only inserted if new or updated if
+  something actually changed - rather than wiped and reinserted wholesale,
+  so the guide doesn't flicker and unrelated data isn't touched on every
+  sync. Programs outside a ~9-day window are pruned to keep the DB small.
 - **API** (`server/routes.js`) serves categories/channels/EPG/search/settings
   /recordings to the frontend, and exposes `/api/stream/:channelId`, which
   builds the real XC stream URL server-side and redirects into the HLS
@@ -140,3 +144,16 @@ See `UNRAID_SETUP.md` — it includes a ready-to-use Community Applications
 template (`unraid-template.xml`) and covers a known gotcha with Unraid's
 auto-conversion of the image into a template (it can misconfigure
 `DB_PATH`/`RECORDINGS_PATH` as host paths, which crashes the app on boot).
+
+## Notifications
+
+Settings → Notifications lets you wire up [Gotify](https://gotify.net) push
+notifications for the recording lifecycle: started, completed, and failed
+(each toggleable independently). Messages look like:
+
+> Scheduled recording of "Program Name" has started/completed/failed.
+
+You'll need a Gotify server URL and an application token (create one under
+**Apps** in your Gotify instance). Use **Send test notification** to confirm
+it's wired up correctly before relying on it. Notification failures never
+block or fail a recording - they're logged and otherwise ignored.

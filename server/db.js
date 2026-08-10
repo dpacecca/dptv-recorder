@@ -47,7 +47,19 @@ db.exec(`
     stop INTEGER NOT NULL     -- epoch ms
   );
   CREATE INDEX IF NOT EXISTS idx_programs_lookup ON programs(epg_channel_id, start, stop);
+`);
 
+// Defensive dedup before adding the unique constraint below - a fresh DB or
+// one that's only ever gone through the old full-wipe sync won't have
+// duplicates, but this makes the migration safe regardless of history.
+db.exec(`
+  DELETE FROM programs WHERE id NOT IN (
+    SELECT MIN(id) FROM programs GROUP BY epg_channel_id, start, stop
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_programs_unique ON programs(epg_channel_id, start, stop);
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS recordings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     channel_id TEXT NOT NULL,

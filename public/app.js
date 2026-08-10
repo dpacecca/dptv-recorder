@@ -51,6 +51,15 @@
     cfgPadBefore: document.getElementById('cfgPadBefore'),
     cfgPadAfter: document.getElementById('cfgPadAfter'),
     cfgRecFormat: document.getElementById('cfgRecFormat'),
+    cfgGotifyUrl: document.getElementById('cfgGotifyUrl'),
+    cfgGotifyToken: document.getElementById('cfgGotifyToken'),
+    cfgNotifyStarted: document.getElementById('cfgNotifyStarted'),
+    cfgNotifyCompleted: document.getElementById('cfgNotifyCompleted'),
+    cfgNotifyFailed: document.getElementById('cfgNotifyFailed'),
+    cfgNotifyError: document.getElementById('cfgNotifyError'),
+    cfgNotifyTest: document.getElementById('cfgNotifyTest'),
+    cfgNotifyCancel: document.getElementById('cfgNotifyCancel'),
+    cfgNotifySave: document.getElementById('cfgNotifySave'),
     cfgRecPath: document.getElementById('cfgRecPath'),
     cfgRecError: document.getElementById('cfgRecError'),
     cfgRecSave: document.getElementById('cfgRecSave'),
@@ -147,6 +156,13 @@
     els.cfgPadAfter.value = rec.padAfterMin;
     els.cfgRecFormat.value = rec.recordFormat || 'ts';
     els.cfgRecPath.textContent = rec.recordingsPath;
+    const notify = await api('/settings/notifications');
+    els.cfgGotifyUrl.value = notify.gotifyUrl || '';
+    els.cfgGotifyToken.value = '';
+    els.cfgGotifyToken.placeholder = notify.hasToken ? '(leave blank to keep the current token)' : 'token';
+    els.cfgNotifyStarted.checked = notify.notifyStarted;
+    els.cfgNotifyCompleted.checked = notify.notifyCompleted;
+    els.cfgNotifyFailed.checked = notify.notifyFailed;
     await loadEpgSources();
     switchSettingsTab('xc');
     openSettingsModal();
@@ -154,6 +170,7 @@
   els.cfgCancel.addEventListener('click', closeSettingsModal);
   els.cfgRecCancel.addEventListener('click', closeSettingsModal);
   els.epgCancel.addEventListener('click', closeSettingsModal);
+  els.cfgNotifyCancel.addEventListener('click', closeSettingsModal);
   els.recListClose.addEventListener('click', closeSettingsModal);
 
   document.querySelectorAll('.modal-tab').forEach((btn) => {
@@ -164,6 +181,7 @@
     document.getElementById('tabXc').style.display = tab === 'xc' ? 'flex' : 'none';
     document.getElementById('tabEpg').style.display = tab === 'epg' ? 'flex' : 'none';
     document.getElementById('tabRec').style.display = tab === 'rec' ? 'flex' : 'none';
+    document.getElementById('tabNotify').style.display = tab === 'notify' ? 'flex' : 'none';
     document.getElementById('tabList').style.display = tab === 'list' ? 'flex' : 'none';
     if (tab === 'list') {
       loadRecordingsList();
@@ -191,6 +209,53 @@
       els.cfgRecError.textContent = err.message;
     } finally {
       els.cfgRecSave.disabled = false;
+    }
+  });
+
+  els.cfgNotifySave.addEventListener('click', async () => {
+    els.cfgNotifySave.disabled = true;
+    els.cfgNotifyError.textContent = '';
+    try {
+      await api('/settings/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gotifyUrl: els.cfgGotifyUrl.value.trim(),
+          gotifyToken: els.cfgGotifyToken.value, // blank = server keeps the existing token
+          notifyStarted: els.cfgNotifyStarted.checked,
+          notifyCompleted: els.cfgNotifyCompleted.checked,
+          notifyFailed: els.cfgNotifyFailed.checked,
+        }),
+      });
+      closeSettingsModal();
+    } catch (err) {
+      els.cfgNotifyError.textContent = err.message;
+    } finally {
+      els.cfgNotifySave.disabled = false;
+    }
+  });
+
+  els.cfgNotifyTest.addEventListener('click', async () => {
+    els.cfgNotifyTest.disabled = true;
+    els.cfgNotifyError.textContent = 'Sending...';
+    try {
+      // save first so the test uses whatever's currently in the fields, not stale stored values
+      await api('/settings/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gotifyUrl: els.cfgGotifyUrl.value.trim(),
+          gotifyToken: els.cfgGotifyToken.value,
+        }),
+      });
+      await api('/settings/notifications/test', { method: 'POST' });
+      els.cfgNotifyError.style.color = 'var(--teal)';
+      els.cfgNotifyError.textContent = 'Test notification sent - check Gotify.';
+    } catch (err) {
+      els.cfgNotifyError.style.color = '';
+      els.cfgNotifyError.textContent = err.message;
+    } finally {
+      els.cfgNotifyTest.disabled = false;
     }
   });
 

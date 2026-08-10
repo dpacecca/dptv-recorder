@@ -105,6 +105,7 @@
       <button class="modal-tab active" data-tab="xc">XC Server</button>
       <button class="modal-tab" data-tab="epg">EPG Source</button>
       <button class="modal-tab" data-tab="rec">Recording</button>
+      <button class="modal-tab" data-tab="notify">Notifications</button>
       <button class="modal-tab" data-tab="list">Recordings</button>
     </div>
 
@@ -163,6 +164,25 @@
       <div class="modal-actions">
         <button id="cfgRecCancel" class="btn-secondary">Cancel</button>
         <button id="cfgRecSave" class="btn-primary">Save</button>
+      </div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabNotify" style="display:none">
+      <label>Gotify server URL<br>
+        <input type="text" id="cfgGotifyUrl" placeholder="http://gotify.local:8080"></label>
+      <label>Gotify application token<br>
+        <input type="password" id="cfgGotifyToken" placeholder="(leave blank to keep the current token)"></label>
+      <label class="rec-select-all"><input type="checkbox" id="cfgNotifyStarted"> Notify when a recording starts</label>
+      <label class="rec-select-all"><input type="checkbox" id="cfgNotifyCompleted"> Notify when a recording completes</label>
+      <label class="rec-select-all"><input type="checkbox" id="cfgNotifyFailed"> Notify when a recording fails</label>
+      <div class="modal-hint">Notifications look like: <em>Scheduled recording of "Program Name" has
+        started/completed/failed.</em> Create an application in Gotify to get a token - see
+        <code>Apps</code> in your Gotify instance.</div>
+      <div class="modal-error" id="cfgNotifyError"></div>
+      <div class="modal-actions">
+        <button id="cfgNotifyTest" class="btn-secondary">Send test notification</button>
+        <button id="cfgNotifyCancel" class="btn-secondary">Cancel</button>
+        <button id="cfgNotifySave" class="btn-primary">Save</button>
       </div>
     </div>
 

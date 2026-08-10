@@ -4,6 +4,7 @@ const xc = require('./xcClient');
 const { performSync, scheduleAutoSync, getSyncState } = require('./sync');
 const { proxyPathFor, hlsProxyHandler } = require('./hlsProxy');
 const recorder = require('./recorder');
+const notifier = require('./notifier');
 
 const router = express.Router();
 
@@ -114,6 +115,37 @@ router.get('/search', (req, res) => {
   `).all(like, Date.now());
 
   res.json({ channels, programs });
+});
+
+// ---------- notification settings ----------
+router.get('/settings/notifications', (req, res) => {
+  res.json({
+    gotifyUrl: getSetting('gotify_url', ''),
+    hasToken: !!getSetting('gotify_token', ''),
+    notifyStarted: getSetting('notify_started', '1') === '1',
+    notifyCompleted: getSetting('notify_completed', '1') === '1',
+    notifyFailed: getSetting('notify_failed', '1') === '1',
+  });
+});
+
+router.post('/settings/notifications', (req, res) => {
+  const { gotifyUrl, gotifyToken, notifyStarted, notifyCompleted, notifyFailed } = req.body || {};
+  if (gotifyUrl !== undefined) setSetting('gotify_url', gotifyUrl);
+  if (gotifyToken) setSetting('gotify_token', gotifyToken); // blank = keep the existing token
+  if (notifyStarted !== undefined) setSetting('notify_started', notifyStarted ? '1' : '0');
+  if (notifyCompleted !== undefined) setSetting('notify_completed', notifyCompleted ? '1' : '0');
+  if (notifyFailed !== undefined) setSetting('notify_failed', notifyFailed ? '1' : '0');
+  res.json({ ok: true });
+});
+
+router.post('/settings/notifications/test', async (req, res) => {
+  const result = await notifier.sendGotify(
+    'DPTV Recorder',
+    'This is a test notification - if you can see this, Gotify is set up correctly.',
+    3
+  );
+  if (result.ok) res.json({ ok: true });
+  else res.status(400).json({ ok: false, error: result.error });
 });
 
 // ---------- recording settings ----------
