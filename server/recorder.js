@@ -103,12 +103,25 @@ function startRecording(row) {
 
   const args = [
     '-y',
+    // tolerate brief network drop-outs/buffering instead of failing outright -
+    // reconnect automatically rather than treating a momentary hiccup as fatal
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_delay_max', '5',
     '-allowed_extensions', 'ALL', // belt-and-suspenders: proxy URLs now carry real extensions,
                                   // but some providers use segment extensions outside ffmpeg's
                                   // built-in whitelist (e.g. unusual fMP4 naming) - this avoids
                                   // that whole class of "not in allowed_segment_extensions" failures
+    '-fflags', '+genpts+discardcorrupt', // regenerate timestamps if missing/broken, and drop
+                                          // individually corrupt packets instead of aborting -
+                                          // live TV streams routinely have minor irregularities
+                                          // that a stricter muxer (esp. Matroska's trailer/index)
+                                          // would otherwise choke on
     '-i', streamUrl,
     '-c', 'copy', // always stream copy - never re-encode, regardless of container
+    '-max_muxing_queue_size', '4096', // avoids "too many packets buffered" aborts when input
+                                       // timing is irregular, common with live stream copy
+    '-avoid_negative_ts', 'make_zero',
     '-f', muxer,
     '-t', String(durationSec),
     outputPath,
@@ -138,17 +151,34 @@ function startRecording(row) {
     const current = rowById(row.id);
     if (!current || current.status === 'cancelled') return; // cancelRecording already handled cleanup
 
+    const size = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : -1;
+    const tail = stderrTail.split('\n').filter(Boolean).slice(-8).join(' | ').trim();
+    const diskFull = /no space left on device|ENOSPC/i.test(stderrTail);
+    const MIN_USABLE_BYTES = 200 * 1024; // ~200KB - enough to exclude an immediate-failure stub,
+                                          // small enough to still catch "recorded fine, hiccuped at the end"
+
     if (code === 0) {
-      const size = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : -1;
       console.log(`[recorder] #${row.id} completed -> ${outputPath} (${size >= 0 ? size + ' bytes' : 'FILE NOT FOUND ON DISK'})`);
       if (size <= 0) {
         console.warn(`[recorder] #${row.id} ffmpeg exited 0 but the output file is missing or empty - check that RECORDINGS_PATH ("${RECORDINGS_DIR}") is actually writable and correctly volume-mounted.`);
       }
       db.prepare(`UPDATE recordings SET status='completed' WHERE id=?`).run(row.id);
       notifier.notifyRecordingCompleted(row.program_title);
+    } else if (!diskFull && size >= MIN_USABLE_BYTES) {
+      // ffmpeg reported an error - often at finalization (writing the
+      // trailer/seek index) - but a substantial amount of real video was
+      // already written to disk. Treat this as completed-with-a-warning
+      // rather than losing the recording outright; it's very likely still
+      // playable, just possibly missing a proper seek index.
+      const warnMsg = `Finished with a warning (ffmpeg exit code ${code}) after writing ${(size / 1024 / 1024).toFixed(1)}MB - the file is likely still playable, possibly with degraded seeking. ${tail}`;
+      console.warn(`[recorder] #${row.id} finished with warnings (code ${code}) but kept a ${size}-byte file -> ${outputPath}`);
+      db.prepare(`UPDATE recordings SET status='completed', error=? WHERE id=?`).run(warnMsg, row.id);
+      notifier.notifyRecordingCompleted(row.program_title);
     } else {
-      console.error(`[recorder] #${row.id} ffmpeg exited with code ${code}`);
-      const errMsg = `ffmpeg exited with code ${code}: ${stderrTail.split('\n').filter(Boolean).slice(-8).join(' | ').trim()}`;
+      const errMsg = diskFull
+        ? `Recording failed: the recordings disk is full (no space left on device). Free up space on the RECORDINGS_PATH volume and try again.`
+        : `ffmpeg exited with code ${code}: ${tail}`;
+      console.error(`[recorder] #${row.id} failed (code ${code}, ${size} bytes written)`);
       db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run(errMsg, row.id);
       notifier.notifyRecordingFailed(row.program_title, errMsg);
     }
