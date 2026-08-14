@@ -157,3 +157,97 @@ You'll need a Gotify server URL and an application token (create one under
 **Apps** in your Gotify instance). Use **Send test notification** to confirm
 it's wired up correctly before relying on it. Notification failures never
 block or fail a recording - they're logged and otherwise ignored.
+
+## Watching a recording while it's still in progress
+
+Whether a still-recording file is watchable in Plex depends entirely on the
+output format:
+
+- **Raw `.ts`**: works. MPEG-TS doesn't need a finalized "trailer" to be
+  structurally valid, so a still-growing `.ts` file is playable.
+- **Live `.mkv`**: generally does NOT work reliably. Matroska needs a proper
+  trailer (duration + seek index) written at the very end to be well-formed -
+  while still recording, the file is technically incomplete, and most
+  players (Plex included) will show a wrong/missing duration or refuse it
+  outright until the recording finishes.
+- **`.ts` then remux to `.mkv`** (the recommended option): records as `.ts`
+  throughout, so it's watchable while still recording exactly like the raw
+  `.ts` option - then automatically remuxes to a properly finished `.mkv`
+  once the recording completes, deleting the source `.ts`. Best of both.
+
+Independent of all this: nothing stops you from just opening DPTV Recorder
+itself and hitting play on the same channel that's currently recording -
+that's true simultaneous live viewing, decoupled entirely from the file on
+disk.
+
+Remuxing (`-c copy`, whichever format) never re-encodes anything - it's pure
+container repackaging, so it's fast and needs no GPU. The optional
+`/dev/dri` passthrough in `docker-compose.yml` exists for possible future
+hardware-accelerated transcoding, not anything the app does today.
+
+## Multi-user accounts & authentication
+
+**⚠️ Breaking change**: this version adds full multi-user support. Every
+user gets their own XC server connection, channel lineup, EPG, recordings,
+and settings - nothing is shared between accounts. Upgrading from an older
+version automatically detects the old single-tenant database and resets
+`settings`/`categories`/`channels`/`programs`/`recordings`/`epg_sources` to
+the new per-user schema (there's no sane way to guess which user "owns" old
+global data). Recording files already on disk aren't deleted, but their
+database records are, so old recordings won't show up in the list anymore -
+grab them directly from the `RECORDINGS_DIR` volume if you need them.
+
+### First login
+
+On first-ever startup with no users in the database, a default account is
+created: **username `admin`, password `password`**. You'll be forced to set
+a new password and confirm your first/last name and email before you can
+use the app - the email in particular needs to match what Authentik (or
+whatever IdP) sends if you plan to use SSO, since that's how accounts get
+linked.
+
+### Adding more users
+
+Sign in as an admin → **Settings → Admin → Users** to add accounts (each
+gets a temporary password and is forced to change it and confirm their
+profile on first login, same as the default admin).
+
+### OIDC / Authentik single sign-on
+
+Settings → Admin (admin accounts only):
+1. In Authentik, create an OAuth2/OIDC application + provider for DPTV
+   Recorder. Note the issuer URL, client ID, and client secret.
+2. Set the redirect URI in Authentik's provider config to exactly
+   `https://your-dptv-host/api/auth/oidc/callback` (or `http://` if you're
+   not running behind TLS) - it must match byte-for-byte what you enter in
+   DPTV Recorder's OIDC settings.
+3. Enter the issuer URL, client ID, client secret, and that same redirect
+   URI in Settings → Admin, and save.
+4. The login screen will now show a "Sign in with Authentik" button.
+
+Account matching/creation on OIDC sign-in works like this: if the `sub`
+claim already matches a linked account, you're in. Otherwise, if the `email`
+claim matches an existing local account's email, that account gets linked
+to your Authentik identity automatically. Otherwise, a brand new account is
+created from the `given_name`/`family_name`/`email`/`preferred_username`
+claims Authentik sends. Requested scopes: `openid profile email`.
+
+### Sessions
+
+Cookie-based, 30-day expiry, `HttpOnly`. If you're terminating TLS in front
+of this app (recommended for anything beyond local/LAN use, especially once
+you're sending real passwords over the network for local login), consider
+setting the `secure` flag on the session cookie in `server/auth.js` - it's
+left `false` by default so plain-HTTP LAN setups keep working out of the box.
+
+## Exposing this externally (HTTPS)
+
+See `CLOUDFLARE_TUNNEL.md` for the recommended setup (Cloudflare Tunnel with
+proxied DNS - Cloudflare terminates HTTPS at their edge, so the app itself
+doesn't need to natively serve TLS). Short version: set `COOKIE_SECURE=true`
+in `.env` once you're consistently accessed over HTTPS.
+
+If you're fronting the app with your own certificates instead of a
+tunnel/reverse proxy, native HTTPS is also supported directly: set
+`TLS_CERT_PATH` and `TLS_KEY_PATH` (both required together) to the
+in-container paths of your certificate and key files.

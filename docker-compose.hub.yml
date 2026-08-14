@@ -23,4 +23,11 @@ services:
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
       - TZ=${TZ:-UTC}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
     restart: unless-stopped
+    # Uncomment to pass through an Intel iGPU (VAAI/QSV) for hardware-accelerated
+    # encoding. Not required for recording or .mkv remuxing (both pure stream
+    # copy, no GPU use). Leave commented unless you have this hardware, or the
+    # container will fail to start.
+    # devices:
+    #   - /dev/dri:/dev/dri

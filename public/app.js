@@ -116,6 +116,18 @@
 
   async function api(path, opts) {
     const res = await fetch('/api' + path, opts);
+    if (res.status === 401) {
+      showLoginScreen();
+      throw new Error('Signed out - please sign in again.');
+    }
+    if (res.status === 403) {
+      const body = await res.json().catch(() => ({}));
+      if (body.mustChangePassword) {
+        showForceChangeScreen();
+        throw new Error('Password change required.');
+      }
+      throw new Error(body.error || 'Forbidden');
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error || `Request failed (${res.status})`);
@@ -965,7 +977,7 @@
     setCategoriesCollapsed(false);
   }
 
-  async function init() {
+  async function initApp() {
     fetch('/api/version').then((r) => r.json()).then((v) => {
       document.getElementById('versionBadge').textContent = 'v' + v.version;
       document.getElementById('versionBadge').title = `Build: ${v.buildTime} · Node ${v.node}`;
@@ -986,5 +998,275 @@
     setInterval(refreshRecordingsBadge, 30000);
   }
 
-  init();
+  // ---------------- auth: screens ----------------
+  const screens = {
+    login: document.getElementById('loginScreen'),
+    forceChange: document.getElementById('forceChangeScreen'),
+    header: document.getElementById('appHeader'),
+    main: document.getElementById('mainContent'),
+  };
+
+  function hideAllScreens() {
+    screens.login.style.display = 'none';
+    screens.forceChange.style.display = 'none';
+    screens.header.style.display = 'none';
+    screens.main.style.display = 'none';
+  }
+
+  async function showLoginScreen() {
+    hideAllScreens();
+    screens.login.style.display = 'flex';
+    document.getElementById('loginError').textContent = '';
+    try {
+      const status = await (await fetch('/api/auth/oidc/status')).json();
+      document.getElementById('oidcLoginBtn').style.display = status.configured ? 'block' : 'none';
+    } catch {
+      document.getElementById('oidcLoginBtn').style.display = 'none';
+    }
+  }
+
+  function showForceChangeScreen(user) {
+    hideAllScreens();
+    screens.forceChange.style.display = 'flex';
+    document.getElementById('fcFirstName').value = (user && user.first_name) || '';
+    document.getElementById('fcLastName').value = (user && user.last_name) || '';
+    document.getElementById('fcEmail').value = (user && user.email) || '';
+    document.getElementById('fcUsername').value = (user && user.username) || '';
+    document.getElementById('fcError').textContent = '';
+  }
+
+  function showApp(user) {
+    hideAllScreens();
+    screens.header.style.display = 'flex';
+    screens.main.style.display = 'grid';
+    state.currentUser = user;
+    document.getElementById('userMenuName').textContent = user.first_name || user.username;
+    document.getElementById('adminTabBtn').style.display = user.is_admin ? 'block' : 'none';
+  }
+
+  document.getElementById('loginSubmit').addEventListener('click', async () => {
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('loginUsername').value.trim(),
+          password: document.getElementById('loginPassword').value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.error || 'Sign-in failed.'; return; }
+      if (data.user.must_change_password) {
+        showForceChangeScreen(data.user);
+      } else {
+        showApp(data.user);
+        await initApp();
+      }
+    } catch (err) {
+      errEl.textContent = err.message;
+    }
+  });
+  document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('loginSubmit').click();
+  });
+  document.getElementById('oidcLoginBtn').addEventListener('click', () => {
+    window.location.href = '/api/auth/oidc/login';
+  });
+
+  document.getElementById('fcSubmit').addEventListener('click', async () => {
+    const errEl = document.getElementById('fcError');
+    errEl.textContent = '';
+    const newPassword = document.getElementById('fcNewPassword').value;
+    if (newPassword.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; return; }
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: document.getElementById('fcFirstName').value.trim(),
+          lastName: document.getElementById('fcLastName').value.trim(),
+          email: document.getElementById('fcEmail').value.trim(),
+          username: document.getElementById('fcUsername').value.trim(),
+          newPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.error || 'Could not save.'; return; }
+      showApp(data.user);
+      await initApp();
+    } catch (err) {
+      errEl.textContent = err.message;
+    }
+  });
+
+  // ---------------- account tab ----------------
+  document.getElementById('userMenuBtn').addEventListener('click', async () => {
+    const u = state.currentUser;
+    if (u) {
+      document.getElementById('acctFirstName').value = u.first_name || '';
+      document.getElementById('acctLastName').value = u.last_name || '';
+      document.getElementById('acctEmail').value = u.email || '';
+      document.getElementById('acctUsername').value = u.username || '';
+    }
+    document.getElementById('acctCurrentPassword').value = '';
+    document.getElementById('acctNewPassword').value = '';
+    document.getElementById('acctError').textContent = '';
+    switchSettingsTab('account');
+    openSettingsModal();
+  });
+
+  document.getElementById('acctSave').addEventListener('click', async () => {
+    const errEl = document.getElementById('acctError');
+    errEl.textContent = '';
+    const newPassword = document.getElementById('acctNewPassword').value;
+    try {
+      await api('/auth/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: document.getElementById('acctFirstName').value.trim(),
+          lastName: document.getElementById('acctLastName').value.trim(),
+          email: document.getElementById('acctEmail').value.trim(),
+          username: document.getElementById('acctUsername').value.trim(),
+        }),
+      });
+      if (newPassword) {
+        if (newPassword.length < 8) { errEl.textContent = 'New password must be at least 8 characters.'; return; }
+        await api('/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            currentPassword: document.getElementById('acctCurrentPassword').value,
+            newPassword,
+          }),
+        });
+      }
+      const me = await api('/auth/me');
+      state.currentUser = me.user;
+      document.getElementById('userMenuName').textContent = me.user.first_name || me.user.username;
+      closeSettingsModal();
+    } catch (err) {
+      errEl.textContent = err.message;
+    }
+  });
+
+  document.getElementById('acctLogout').addEventListener('click', async () => {
+    try { await api('/auth/logout', { method: 'POST' }); } catch {}
+    closeSettingsModal();
+    showLoginScreen();
+  });
+
+  // ---------------- admin tab ----------------
+  async function loadAdminTab() {
+    try {
+      const oidcSettings = await api('/auth/admin/oidc-settings');
+      document.getElementById('oidcIssuer').value = oidcSettings.issuer || '';
+      document.getElementById('oidcClientId').value = oidcSettings.clientId || '';
+      document.getElementById('oidcClientSecret').value = '';
+      document.getElementById('oidcClientSecret').placeholder = oidcSettings.hasClientSecret ? '(leave blank to keep the current secret)' : 'client secret';
+      document.getElementById('oidcRedirectUri').value = oidcSettings.redirectUri || '';
+      await loadAdminUsers();
+    } catch (err) {
+      document.getElementById('oidcError').textContent = err.message;
+    }
+  }
+
+  async function loadAdminUsers() {
+    const users = await api('/auth/admin/users');
+    document.getElementById('adminUsersList').innerHTML = users.map((u) => `
+      <div class="rec-item">
+        <div class="rec-info">
+          <div class="rec-title">${escapeHtml(u.first_name)} ${escapeHtml(u.last_name)} <span style="color:var(--text-faint)">— @${escapeHtml(u.username)}</span></div>
+          <div class="rec-meta">${escapeHtml(u.email)}${u.is_admin ? ' · admin' : ''}${u.oidc_subject ? ' · linked to SSO' : ''}</div>
+        </div>
+        <div class="rec-actions"><button data-user-id="${u.id}">Delete</button></div>
+      </div>
+    `).join('') || `<div class="recordings-empty">No other users yet.</div>`;
+
+    document.getElementById('adminUsersList').querySelectorAll('button[data-user-id]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Delete this user and all their recordings/settings?')) return;
+        try {
+          await api(`/auth/admin/users/${btn.dataset.userId}`, { method: 'DELETE' });
+          await loadAdminUsers();
+        } catch (err) {
+          document.getElementById('adminUsersError').textContent = err.message;
+        }
+      });
+    });
+  }
+
+  document.getElementById('oidcSave').addEventListener('click', async () => {
+    const errEl = document.getElementById('oidcError');
+    errEl.textContent = '';
+    try {
+      await api('/auth/admin/oidc-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issuer: document.getElementById('oidcIssuer').value.trim(),
+          clientId: document.getElementById('oidcClientId').value.trim(),
+          clientSecret: document.getElementById('oidcClientSecret').value,
+          redirectUri: document.getElementById('oidcRedirectUri').value.trim(),
+        }),
+      });
+      errEl.style.color = 'var(--teal)';
+      errEl.textContent = 'Saved.';
+    } catch (err) {
+      errEl.style.color = '';
+      errEl.textContent = err.message;
+    }
+  });
+
+  document.getElementById('newUserAdd').addEventListener('click', async () => {
+    const errEl = document.getElementById('adminUsersError');
+    errEl.textContent = '';
+    try {
+      await api('/auth/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('newUserUsername').value.trim(),
+          firstName: document.getElementById('newUserFirstName').value.trim(),
+          lastName: document.getElementById('newUserLastName').value.trim(),
+          email: document.getElementById('newUserEmail').value.trim(),
+          password: document.getElementById('newUserPassword').value,
+        }),
+      });
+      ['newUserUsername', 'newUserFirstName', 'newUserLastName', 'newUserEmail', 'newUserPassword'].forEach((id) => {
+        document.getElementById(id).value = '';
+      });
+      await loadAdminUsers();
+    } catch (err) {
+      errEl.textContent = err.message;
+    }
+  });
+
+  // hook the admin tab load into the existing tab switcher
+  const _originalSwitchSettingsTab = switchSettingsTab;
+  switchSettingsTab = function patchedSwitchSettingsTab(tab) {
+    _originalSwitchSettingsTab(tab);
+    document.getElementById('tabAccount').style.display = tab === 'account' ? 'flex' : 'none';
+    document.getElementById('tabAdmin').style.display = tab === 'admin' ? 'flex' : 'none';
+    if (tab === 'admin') loadAdminTab();
+  };
+
+  // ---------------- bootstrap ----------------
+  async function bootstrapAuth() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.status === 401) { await showLoginScreen(); return; }
+      const data = await res.json();
+      if (data.user.must_change_password) { showForceChangeScreen(data.user); return; }
+      showApp(data.user);
+      await initApp();
+    } catch (err) {
+      console.error(err);
+      await showLoginScreen();
+    }
+  }
+
+  bootstrapAuth();
 })();

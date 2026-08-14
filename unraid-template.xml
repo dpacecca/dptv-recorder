@@ -26,4 +26,5 @@
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the app runs as, so files it writes are owned correctly. Unraid default (nobody): 99" Type="Variable" Display="always" Required="false" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the app runs as. Unraid default (users): 100" Type="Variable" Display="always" Required="false" Mask="false">100</Config>
   <Config Name="TZ" Target="TZ" Default="UTC" Mode="" Description="Your local IANA timezone, e.g. Australia/Perth. Needed to correctly interpret EPG times from providers whose xmltv.php omits a UTC offset." Type="Variable" Display="always" Required="false" Mask="false">UTC</Config>
+  <Config Name="GPU (optional)" Target="/dev/dri" Default="" Mode="" Description="Optional: pass through an Intel iGPU for future hardware-accelerated transcoding. NOT required for recording or .mkv remuxing (both are pure stream copy, no GPU use at all) - leave blank unless you specifically need this. If set, typically /dev/dri." Type="Device" Display="always" Required="false" Mask="false"></Config>
 </Container>

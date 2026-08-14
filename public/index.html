@@ -8,7 +8,34 @@
 </head>
 <body>
 
-<header>
+<!-- login screen -->
+<div class="auth-screen" id="loginScreen" style="display:none">
+  <div class="auth-card">
+    <h1>DPTV<span>Recorder</span></h1>
+    <label>Username<br><input type="text" id="loginUsername" autocomplete="username"></label>
+    <label>Password<br><input type="password" id="loginPassword" autocomplete="current-password"></label>
+    <div class="modal-error" id="loginError"></div>
+    <button id="loginSubmit" class="btn-primary">Sign in</button>
+    <button id="oidcLoginBtn" class="btn-secondary" style="display:none">Sign in with Authentik</button>
+  </div>
+</div>
+
+<!-- forced password change / first-login profile completion -->
+<div class="auth-screen" id="forceChangeScreen" style="display:none">
+  <div class="auth-card">
+    <h1>Welcome</h1>
+    <p class="modal-hint">This is your first sign-in - set a new password and confirm your details.</p>
+    <label>First name<br><input type="text" id="fcFirstName"></label>
+    <label>Last name<br><input type="text" id="fcLastName"></label>
+    <label>Email<br><input type="email" id="fcEmail"></label>
+    <label>Username<br><input type="text" id="fcUsername"></label>
+    <label>New password (min 8 characters)<br><input type="password" id="fcNewPassword" autocomplete="new-password"></label>
+    <div class="modal-error" id="fcError"></div>
+    <button id="fcSubmit" class="btn-primary">Save and continue</button>
+  </div>
+</div>
+
+<header id="appHeader" style="display:none">
   <div class="brand">
     <span class="dot" id="statusDot"></span>
     <h1>DPTV<span>Recorder</span></h1>
@@ -30,6 +57,7 @@
     <button id="syncBtn"><span class="spin"></span><span id="syncLabel">Sync now</span></button>
     <button id="recordingsBtn" title="Recordings">⏺ <span id="recordingsBadge" class="badge" style="display:none">0</span></button>
     <button id="settingsBtn" title="Settings">⚙</button>
+    <button id="userMenuBtn" title="Account"><span id="userMenuName">Account</span></button>
     <span id="versionBadge" class="version-badge" title="Loading version...">v?.?.?</span>
   </div>
 </header>
@@ -39,7 +67,7 @@
   <button id="errorBannerClose" title="Dismiss">✕</button>
 </div>
 
-<div class="main">
+<div class="main" id="mainContent" style="display:none">
 
   <div class="categories" id="categoriesPanel">
     <div class="cat-search">
@@ -107,6 +135,8 @@
       <button class="modal-tab" data-tab="rec">Recording</button>
       <button class="modal-tab" data-tab="notify">Notifications</button>
       <button class="modal-tab" data-tab="list">Recordings</button>
+      <button class="modal-tab" data-tab="account">Account</button>
+      <button class="modal-tab" data-tab="admin" id="adminTabBtn" style="display:none">Admin</button>
     </div>
 
     <div class="modal-tab-panel" id="tabXc">
@@ -151,12 +181,16 @@
         <input type="number" id="cfgPadAfter" min="0" max="120" step="1"></label>
       <label>Output format<br>
         <select id="cfgRecFormat">
-          <option value="ts">Raw .ts (no processing)</option>
-          <option value="mkv">Remux to .mkv (recommended - better Plex compatibility, same quality)</option>
+          <option value="ts">Raw .ts (playable while still recording)</option>
+          <option value="mkv">Live .mkv (NOT reliably playable until the recording finishes)</option>
+          <option value="mkv_post">.ts while recording, then remux to finished .mkv (recommended)</option>
         </select></label>
-      <div class="modal-hint">Both options stream-copy only (no re-encoding, no quality loss, same CPU
-        cost as now) - .mkv just repackages the same video/audio into a container that seeks and plays
-        back more reliably in Plex than raw broadcast .ts.</div>
+      <div class="modal-hint">All three stream-copy only - no re-encoding, no quality loss, no extra
+        CPU/GPU cost. The difference is just the container and when it's finalized: Matroska (.mkv)
+        needs a proper trailer/seek-index written at the end to be well-formed, so a still-recording
+        .mkv usually won't play (or seek) reliably in Plex - raw .ts has no such requirement and is
+        readable while it's still growing. "Recommended" records as .ts (so you can watch it live/in
+        progress) and automatically remuxes to a properly finished .mkv once it's done - best of both.</div>
       <div class="modal-hint">Recordings are written inside the container at
         <code id="cfgRecPath">/recordings</code>, which maps to the <code>RECORDINGS_DIR</code>
         folder you set in <code>.env</code> / <code>docker-compose.yml</code> on the host.</div>
@@ -195,6 +229,46 @@
       <div class="modal-actions">
         <button id="recListClose" class="btn-secondary">Close</button>
       </div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabAccount" style="display:none">
+      <label>First name<br><input type="text" id="acctFirstName"></label>
+      <label>Last name<br><input type="text" id="acctLastName"></label>
+      <label>Email<br><input type="email" id="acctEmail"></label>
+      <label>Username<br><input type="text" id="acctUsername"></label>
+      <div class="modal-hint">Leave the password fields blank if you only want to update your profile.</div>
+      <label>Current password<br><input type="password" id="acctCurrentPassword" autocomplete="current-password"></label>
+      <label>New password<br><input type="password" id="acctNewPassword" autocomplete="new-password"></label>
+      <div class="modal-error" id="acctError"></div>
+      <div class="modal-actions">
+        <button id="acctLogout" class="btn-secondary">Sign out</button>
+        <button id="acctSave" class="btn-primary">Save</button>
+      </div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabAdmin" style="display:none">
+      <div class="modal-hint"><strong>OIDC / Authentik single sign-on</strong></div>
+      <label>Issuer URL<br><input type="text" id="oidcIssuer" placeholder="https://authentik.example.com/application/o/dptv-recorder/"></label>
+      <label>Client ID<br><input type="text" id="oidcClientId"></label>
+      <label>Client secret<br><input type="password" id="oidcClientSecret" placeholder="(leave blank to keep the current secret)"></label>
+      <label>Redirect URI<br><input type="text" id="oidcRedirectUri" placeholder="https://your-dptv-host/api/auth/oidc/callback"></label>
+      <div class="modal-hint">Register this exact redirect URI in Authentik's application config. Requested scopes: <code>openid profile email</code>.</div>
+      <div class="modal-error" id="oidcError"></div>
+      <div class="modal-actions">
+        <button id="oidcSave" class="btn-primary">Save OIDC settings</button>
+      </div>
+
+      <div class="modal-hint" style="margin-top:10px"><strong>Users</strong></div>
+      <div id="adminUsersList" class="recordings-list"></div>
+      <div class="epg-source-add">
+        <input type="text" id="newUserUsername" placeholder="Username">
+        <input type="text" id="newUserFirstName" placeholder="First name">
+        <input type="text" id="newUserLastName" placeholder="Last name">
+        <input type="email" id="newUserEmail" placeholder="Email">
+        <input type="password" id="newUserPassword" placeholder="Temporary password">
+        <button id="newUserAdd" class="btn-secondary">Add user</button>
+      </div>
+      <div class="modal-error" id="adminUsersError"></div>
     </div>
   </div>
 </div>

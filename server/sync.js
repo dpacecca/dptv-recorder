@@ -3,62 +3,72 @@ const { db, getSetting, setSetting } = require('./db');
 const xc = require('./xcClient');
 const { parseXmltv } = require('./xmltv');
 
-let cronTask = null;
-let syncState = { running: false, phase: null, error: null, startedAt: null, finishedAt: null, skipped: null };
+const cronTasks = new Map();   // userId -> node-cron task
+const syncStates = new Map();  // userId -> sync state
 
-function getSyncState() {
-  return { ...syncState, lastSyncAt: getSetting('last_sync_at', null) };
+function freshState() {
+  return { running: false, phase: null, error: null, startedAt: null, finishedAt: null, skipped: null };
 }
 
-function requireCreds() {
-  const host = getSetting('xc_host');
-  const username = getSetting('xc_username');
-  const password = getSetting('xc_password');
+function getSyncState(userId) {
+  const state = syncStates.get(userId) || freshState();
+  return { ...state, lastSyncAt: getSetting(userId, 'last_sync_at', null) };
+}
+
+function requireCreds(userId) {
+  const host = getSetting(userId, 'xc_host');
+  const username = getSetting(userId, 'xc_username');
+  const password = getSetting(userId, 'xc_password');
   if (!host || !username || !password) {
     throw new Error('XC server is not configured yet. Add your host, username and password in Settings.');
   }
   return { host, username, password };
 }
 
-async function performSync() {
-  if (syncState.running) {
-    console.log('[sync] already running, ignoring duplicate trigger');
-    return syncState;
+async function performSync(userId) {
+  const existing = syncStates.get(userId);
+  if (existing && existing.running) {
+    console.log(`[sync] user ${userId}: already running, ignoring duplicate trigger`);
+    return existing;
   }
-  syncState = { running: true, phase: 'starting', error: null, startedAt: Date.now(), finishedAt: null, skipped: null };
-  console.log('[sync] starting');
+  let state = freshState();
+  state.running = true;
+  state.phase = 'starting';
+  state.startedAt = Date.now();
+  syncStates.set(userId, state);
+  console.log(`[sync] user ${userId}: starting`);
 
   try {
-    const { host, username, password } = requireCreds();
+    const { host, username, password } = requireCreds(userId);
 
-    syncState.phase = 'categories';
-    console.log('[sync] fetching categories from', host);
+    state.phase = 'categories';
+    console.log(`[sync] user ${userId}: fetching categories from`, host);
     const categories = await xc.getLiveCategories(host, username, password);
-    console.log(`[sync] got ${categories.length} categories`);
+    console.log(`[sync] user ${userId}: got ${categories.length} categories`);
 
-    syncState.phase = 'channels';
+    state.phase = 'channels';
     const streams = await xc.getLiveStreams(host, username, password);
-    console.log(`[sync] got ${streams.length} channels`);
+    console.log(`[sync] user ${userId}: got ${streams.length} channels`);
 
-    syncState.phase = 'epg';
-    const activeEpgSourceId = getSetting('active_epg_source_id', '');
+    state.phase = 'epg';
+    const activeEpgSourceId = getSetting(userId, 'active_epg_source_id', '');
     let xmltvText;
     if (activeEpgSourceId) {
-      const source = db.prepare('SELECT * FROM epg_sources WHERE id = ?').get(activeEpgSourceId);
+      const source = db.prepare('SELECT * FROM epg_sources WHERE user_id = ? AND id = ?').get(userId, activeEpgSourceId);
       if (!source) {
         throw new Error(`Selected EPG source (id ${activeEpgSourceId}) no longer exists - pick another one in Settings.`);
       }
-      console.log(`[sync] fetching EPG from custom source "${source.name}": ${source.url}`);
+      console.log(`[sync] user ${userId}: fetching EPG from custom source "${source.name}": ${source.url}`);
       xmltvText = await xc.fetchGenericXmltv(source.url);
     } else {
-      console.log('[sync] fetching EPG from XC server xmltv.php');
+      console.log(`[sync] user ${userId}: fetching EPG from XC server xmltv.php`);
       xmltvText = await xc.fetchXmltv(host, username, password);
     }
-    console.log(`[sync] fetched xmltv (${xmltvText.length} bytes)`);
+    console.log(`[sync] user ${userId}: fetched xmltv (${xmltvText.length} bytes)`);
     const { programmes } = parseXmltv(xmltvText);
-    console.log(`[sync] parsed ${programmes.length} programmes from xmltv`);
+    console.log(`[sync] user ${userId}: parsed ${programmes.length} programmes from xmltv`);
 
-    syncState.phase = 'saving';
+    state.phase = 'saving';
     const now = Date.now();
     const retentionCutoff = now - 24 * 60 * 60 * 1000; // wipe programs 24h after they finish, not after they started
     const windowEnd = now + 8 * 24 * 60 * 60 * 1000;   // keep up to 8 days ahead
@@ -66,18 +76,18 @@ async function performSync() {
     const skipped = { categories: 0, channels: 0, programmes: 0 };
 
     const tx = db.transaction(() => {
-      db.prepare('DELETE FROM categories').run();
-      const insCat = db.prepare('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)');
+      db.prepare('DELETE FROM categories WHERE user_id = ?').run(userId);
+      const insCat = db.prepare('INSERT INTO categories (user_id, id, name, sort_order) VALUES (?, ?, ?, ?)');
       const knownCategoryIds = new Set();
       categories.forEach((c, i) => {
         if (c.category_id === undefined || c.category_id === null) { skipped.categories++; return; }
         const id = String(c.category_id);
         try {
-          insCat.run(id, c.category_name != null ? String(c.category_name) : '(Unnamed)', i);
+          insCat.run(userId, id, c.category_name != null ? String(c.category_name) : '(Unnamed)', i);
           knownCategoryIds.add(id);
         } catch (err) {
           skipped.categories++;
-          console.warn('[sync] skipped a malformed category:', err.message, JSON.stringify(c).slice(0, 200));
+          console.warn(`[sync] user ${userId}: skipped a malformed category:`, err.message, JSON.stringify(c).slice(0, 200));
         }
       });
 
@@ -93,22 +103,23 @@ async function performSync() {
         if (id && !knownCategoryIds.has(id)) orphanedCategoryIds.add(id);
       });
       orphanedCategoryIds.forEach((id) => {
-        insCat.run(id, `Uncategorized (${id})`, nextSortOrder++);
+        insCat.run(userId, id, `Uncategorized (${id})`, nextSortOrder++);
         knownCategoryIds.add(id);
       });
       if (orphanedCategoryIds.size > 0) {
-        console.warn(`[sync] ${orphanedCategoryIds.size} category id(s) referenced by channels weren't in get_live_categories - created placeholder categories for them so those channels stay visible`);
+        console.warn(`[sync] user ${userId}: ${orphanedCategoryIds.size} category id(s) referenced by channels weren't in get_live_categories - created placeholder categories for them so those channels stay visible`);
       }
 
-      db.prepare('DELETE FROM channels').run();
+      db.prepare('DELETE FROM channels WHERE user_id = ?').run(userId);
       const insChan = db.prepare(`
-        INSERT INTO channels (id, name, logo, category_id, epg_channel_id, stream_num)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO channels (user_id, id, name, logo, category_id, epg_channel_id, stream_num)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
       streams.forEach((s) => {
         if (s.stream_id === undefined || s.stream_id === null) { skipped.channels++; return; }
         try {
           insChan.run(
+            userId,
             String(s.stream_id),
             s.name != null ? String(s.name) : `Channel ${s.stream_id}`,
             s.stream_icon || null,
@@ -118,7 +129,7 @@ async function performSync() {
           );
         } catch (err) {
           skipped.channels++;
-          console.warn('[sync] skipped a malformed channel:', err.message, JSON.stringify(s).slice(0, 200));
+          console.warn(`[sync] user ${userId}: skipped a malformed channel:`, err.message, JSON.stringify(s).slice(0, 200));
         }
       });
 
@@ -132,11 +143,11 @@ async function performSync() {
       // still inside the window are left alone rather than deleted - a
       // program the provider stops listing doesn't necessarily mean it's
       // gone, and this avoids flickering the guide on every sync.
-      db.prepare('DELETE FROM programs WHERE stop < ? OR start > ?').run(retentionCutoff, windowEnd);
+      db.prepare('DELETE FROM programs WHERE user_id = ? AND (stop < ? OR start > ?)').run(userId, retentionCutoff, windowEnd);
       const upsertProg = db.prepare(`
-        INSERT INTO programs (epg_channel_id, title, description, start, stop)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(epg_channel_id, start, stop) DO UPDATE SET
+        INSERT INTO programs (user_id, epg_channel_id, title, description, start, stop)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, epg_channel_id, start, stop) DO UPDATE SET
           title = excluded.title,
           description = excluded.description
         WHERE title != excluded.title OR description IS NOT excluded.description
@@ -146,66 +157,73 @@ async function performSync() {
         if (p.stop < retentionCutoff || p.start > windowEnd) return;
         if (!p.channel) { skipped.programmes++; return; }
         try {
-          const info = upsertProg.run(String(p.channel), p.title || '(untitled)', p.description || '', p.start, p.stop);
+          const info = upsertProg.run(userId, String(p.channel), p.title || '(untitled)', p.description || '', p.start, p.stop);
           if (info.changes > 0) touched++;
         } catch (err) {
           skipped.programmes++;
-          console.warn('[sync] skipped a malformed programme:', err.message, JSON.stringify(p).slice(0, 200));
+          console.warn(`[sync] user ${userId}: skipped a malformed programme:`, err.message, JSON.stringify(p).slice(0, 200));
         }
       });
-      console.log(`[sync] programs: ${touched} added/updated out of ${programmes.length} in the source feed`);
+      console.log(`[sync] user ${userId}: programs: ${touched} added/updated out of ${programmes.length} in the source feed`);
     });
     tx();
 
     if (skipped.categories || skipped.channels || skipped.programmes) {
-      console.warn(`[sync] completed with some entries skipped due to malformed data: ${skipped.categories} categories, ${skipped.channels} channels, ${skipped.programmes} programmes`);
+      console.warn(`[sync] user ${userId}: completed with some entries skipped due to malformed data: ${skipped.categories} categories, ${skipped.channels} channels, ${skipped.programmes} programmes`);
     }
 
-    setSetting('last_sync_at', Date.now());
-    syncState.phase = 'done';
-    syncState.skipped = skipped;
-    console.log('[sync] completed successfully');
+    setSetting(userId, 'last_sync_at', Date.now());
+    state.phase = 'done';
+    state.skipped = skipped;
+    console.log(`[sync] user ${userId}: completed successfully`);
   } catch (err) {
-    const failedPhase = syncState.phase;
-    syncState.error = err.message;
-    syncState.phase = 'error';
-    console.error(`[sync] failed during phase "${failedPhase}":`, err.message);
+    const failedPhase = state.phase;
+    state.error = err.message;
+    state.phase = 'error';
+    console.error(`[sync] user ${userId}: failed during phase "${failedPhase}":`, err.message);
     throw err;
   } finally {
-    syncState.running = false;
-    syncState.finishedAt = Date.now();
+    state.running = false;
+    state.finishedAt = Date.now();
   }
 
-  return syncState;
+  return state;
 }
 
 function pruneOldPrograms() {
   const retentionCutoff = Date.now() - 24 * 60 * 60 * 1000;
   const info = db.prepare('DELETE FROM programs WHERE stop < ?').run(retentionCutoff);
   if (info.changes > 0) {
-    console.log(`[cleanup] pruned ${info.changes} program(s) that finished more than 24h ago`);
+    console.log(`[cleanup] pruned ${info.changes} program(s) that finished more than 24h ago (across all users)`);
   }
 }
 
-function scheduleAutoSync(hours) {
-  if (cronTask) {
-    cronTask.stop();
-    cronTask = null;
+function scheduleAutoSync(userId, hours) {
+  const existing = cronTasks.get(userId);
+  if (existing) {
+    existing.stop();
+    cronTasks.delete(userId);
   }
   const h = Number(hours) || 0;
-  setSetting('auto_sync_hours', h);
+  setSetting(userId, 'auto_sync_hours', h);
   if (h > 0) {
     // node-cron supports step values in the hour field, e.g. "0 */4 * * *"
     const expr = `0 */${h} * * *`;
-    cronTask = cron.schedule(expr, () => {
-      performSync().catch((err) => console.error('[auto-sync] failed:', err.message));
+    const task = cron.schedule(expr, () => {
+      performSync(userId).catch((err) => console.error(`[auto-sync] user ${userId} failed:`, err.message));
     });
+    cronTasks.set(userId, task);
   }
 }
 
 function initScheduler() {
-  const hours = Number(getSetting('auto_sync_hours', 4)) || 0;
-  scheduleAutoSync(hours);
+  // schedule auto-sync for every existing user, based on their stored
+  // preference (or the default) so this survives container restarts
+  const allUserIds = db.prepare('SELECT id FROM users').all().map((r) => r.id);
+  allUserIds.forEach((userId) => {
+    const hours = Number(getSetting(userId, 'auto_sync_hours', 4)) || 0;
+    scheduleAutoSync(userId, hours);
+  });
 
   // Independent of sync (which only prunes as a side effect of running at
   // all) - guarantees the 24h-after-finish retention promise holds even if

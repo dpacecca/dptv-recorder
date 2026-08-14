@@ -2,9 +2,9 @@ const { getSetting } = require('./db');
 
 // Sends a message via Gotify (https://gotify.net). Fails soft everywhere -
 // notifications are a nice-to-have, never worth breaking a recording over.
-async function sendGotify(title, message, priority = 5) {
-  const url = getSetting('gotify_url', '');
-  const token = getSetting('gotify_token', '');
+async function sendGotify(userId, title, message, priority = 5) {
+  const url = getSetting(userId, 'gotify_url', '');
+  const token = getSetting(userId, 'gotify_token', '');
   if (!url || !token) {
     return { ok: false, error: 'Gotify is not configured (missing server URL or app token).' };
   }
@@ -32,30 +32,30 @@ async function sendGotify(title, message, priority = 5) {
     }
     return { ok: true };
   } catch (err) {
-    console.error('[notifier] failed to send Gotify notification:', err.message);
+    console.error(`[notifier] user ${userId}: failed to send Gotify notification:`, err.message);
     return { ok: false, error: err.message };
   }
 }
 
-function eventEnabled(event) {
+function eventEnabled(userId, event) {
   // defaults to enabled for all three event types until the user changes it
-  return getSetting(`notify_${event}`, '1') === '1';
+  return getSetting(userId, `notify_${event}`, '1') === '1';
 }
 
-function notifyRecordingStarted(programTitle) {
-  if (!eventEnabled('started')) return;
-  sendGotify('Recording started', `Scheduled recording of "${programTitle}" has started.`, 3);
+function notifyRecordingStarted(userId, programTitle) {
+  if (!eventEnabled(userId, 'started')) return;
+  sendGotify(userId, 'Recording started', `Scheduled recording of "${programTitle}" has started.`, 3);
 }
 
-function notifyRecordingCompleted(programTitle) {
-  if (!eventEnabled('completed')) return;
-  sendGotify('Recording completed', `Scheduled recording of "${programTitle}" has completed.`, 3);
+function notifyRecordingCompleted(userId, programTitle) {
+  if (!eventEnabled(userId, 'completed')) return;
+  sendGotify(userId, 'Recording completed', `Scheduled recording of "${programTitle}" has completed.`, 3);
 }
 
-function notifyRecordingFailed(programTitle, errorDetail) {
-  if (!eventEnabled('failed')) return;
+function notifyRecordingFailed(userId, programTitle, errorDetail) {
+  if (!eventEnabled(userId, 'failed')) return;
   const detail = errorDetail ? ` ${String(errorDetail).slice(0, 300)}` : '';
-  sendGotify('Recording failed', `Scheduled recording of "${programTitle}" has failed.${detail}`, 8);
+  sendGotify(userId, 'Recording failed', `Scheduled recording of "${programTitle}" has failed.${detail}`, 8);
 }
 
 module.exports = {
