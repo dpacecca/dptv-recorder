@@ -12,6 +12,7 @@
   <Overview>DPTV Recorder - a self-hosted channel guide and DVR for Xtream Codes (XC) IPTV servers. 7-day EPG timeline, click-to-play live preview, and scheduled recording straight to raw .ts files via ffmpeg.</Overview>
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/dpacecca/dptv-recorder/main/icon.png</Icon>
   <TemplateURL/>
   <ExtraParams/>
   <PostArgs/>
