@@ -184,6 +184,8 @@
   els.epgCancel.addEventListener('click', closeSettingsModal);
   els.cfgNotifyCancel.addEventListener('click', closeSettingsModal);
   els.recListClose.addEventListener('click', closeSettingsModal);
+  document.getElementById('acctCancel').addEventListener('click', closeSettingsModal);
+  document.getElementById('adminCancel').addEventListener('click', closeSettingsModal);
 
   document.querySelectorAll('.modal-tab').forEach((btn) => {
     btn.addEventListener('click', () => switchSettingsTab(btn.dataset.tab));
@@ -512,7 +514,12 @@
   }
 
   els.epgBody.addEventListener('scroll', () => {
-    const day = Math.round(els.epgBody.scrollLeft / DAY_WIDTH);
+    // Math.floor, not round: we want which day BUCKET the scroll position
+    // currently falls within (e.g. late in the evening, scrollLeft sits
+    // close to tomorrow's boundary but we're still clearly viewing today) -
+    // rounding to the nearest boundary was incorrectly marking tomorrow's
+    // chip active for anything past roughly the midpoint of today's width.
+    const day = Math.floor(els.epgBody.scrollLeft / DAY_WIDTH);
     [...els.dayChips.children].forEach((chip, i) => chip.classList.toggle('active', i === day));
   });
 
@@ -1102,7 +1109,7 @@
   });
 
   // ---------------- account tab ----------------
-  document.getElementById('userMenuBtn').addEventListener('click', async () => {
+  function loadAccountTab() {
     const u = state.currentUser;
     if (u) {
       document.getElementById('acctFirstName').value = u.first_name || '';
@@ -1113,6 +1120,10 @@
     document.getElementById('acctCurrentPassword').value = '';
     document.getElementById('acctNewPassword').value = '';
     document.getElementById('acctError').textContent = '';
+  }
+
+  document.getElementById('userMenuBtn').addEventListener('click', async () => {
+    loadAccountTab();
     switchSettingsTab('account');
     openSettingsModal();
   });
@@ -1244,13 +1255,14 @@
     }
   });
 
-  // hook the admin tab load into the existing tab switcher
+  // hook the admin/account tab loads into the existing tab switcher
   const _originalSwitchSettingsTab = switchSettingsTab;
   switchSettingsTab = function patchedSwitchSettingsTab(tab) {
     _originalSwitchSettingsTab(tab);
     document.getElementById('tabAccount').style.display = tab === 'account' ? 'flex' : 'none';
     document.getElementById('tabAdmin').style.display = tab === 'admin' ? 'flex' : 'none';
     if (tab === 'admin') loadAdminTab();
+    if (tab === 'account') loadAccountTab();
   };
 
   // ---------------- bootstrap ----------------
