@@ -1,0 +1,27 @@
+services:
+  dptv-recorder:
+    build: .
+    container_name: dptv-recorder
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+      - ${RECORDINGS_DIR:-./recordings}:/recordings
+    environment:
+      - PORT=3000
+      - DB_PATH=/data/guide.db
+      - RECORDINGS_PATH=/recordings
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-UTC}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+    restart: unless-stopped
+    # Uncomment the two lines below to pass through an Intel iGPU (VAAI/QSV)
+    # for hardware-accelerated video encoding. NOT required for anything the
+    # app currently does - recording and .mkv remuxing are pure stream copy
+    # (no encode/decode, no GPU use at all) - this is only useful if/when
+    # hardware-accelerated transcoding is added. Leave commented out unless
+    # you actually have compatible hardware at this path, or the container
+    # will fail to start ("no such device").
+    # devices:
+    #   - /dev/dri:/dev/dri

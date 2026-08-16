@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DPTV Recorder</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- login screen -->
+<div class="auth-screen" id="loginScreen" style="display:none">
+  <div class="auth-card">
+    <h1>DPTV<span>Recorder</span></h1>
+    <div id="localLoginFields">
+      <label>Username<br><input type="text" id="loginUsername" autocomplete="username"></label>
+      <label>Password<br><input type="password" id="loginPassword" autocomplete="current-password"></label>
+      <div class="modal-error" id="loginError"></div>
+      <button id="loginSubmit" class="btn-primary">Sign in</button>
+    </div>
+    <button id="oidcLoginBtn" class="btn-secondary" style="display:none">Sign in with Authentik</button>
+    <button id="useLocalLoginBtn" class="btn-secondary" style="display:none">Use username/password instead</button>
+  </div>
+</div>
+
+<!-- forced password change / first-login profile completion -->
+<div class="auth-screen" id="forceChangeScreen" style="display:none">
+  <div class="auth-card">
+    <h1>Welcome</h1>
+    <p class="modal-hint">This is your first sign-in - set a new password and confirm your details.</p>
+    <label>First name<br><input type="text" id="fcFirstName"></label>
+    <label>Last name<br><input type="text" id="fcLastName"></label>
+    <label>Email<br><input type="email" id="fcEmail"></label>
+    <label>Username<br><input type="text" id="fcUsername"></label>
+    <label>New password (min 8 characters)<br><input type="password" id="fcNewPassword" autocomplete="new-password"></label>
+    <div class="modal-error" id="fcError"></div>
+    <button id="fcSubmit" class="btn-primary">Save and continue</button>
+  </div>
+</div>
+
+<header id="appHeader" style="display:none">
+  <div class="brand">
+    <span class="dot" id="statusDot"></span>
+    <h1>DPTV<span>Recorder</span></h1>
+  </div>
+  <div class="sync-bar">
+    <div class="sync-status">
+      <span class="label">Last synced</span>
+      <span class="value" id="lastSynced">never</span>
+    </div>
+    <select id="autoSync" title="Auto sync interval">
+      <option value="0">Auto sync: off</option>
+      <option value="1">Every 1 hr</option>
+      <option value="2">Every 2 hrs</option>
+      <option value="4">Every 4 hrs</option>
+      <option value="6">Every 6 hrs</option>
+      <option value="12">Every 12 hrs</option>
+      <option value="24">Every 24 hrs</option>
+    </select>
+    <button id="syncBtn"><span class="spin"></span><span id="syncLabel">Sync now</span></button>
+    <button id="recordingsBtn" title="Recordings">⏺ <span id="recordingsBadge" class="badge" style="display:none">0</span></button>
+    <button id="settingsBtn" title="Settings">⚙</button>
+    <button id="userMenuBtn" title="Account"><span id="userMenuName">Account</span></button>
+    <span id="versionBadge" class="version-badge" title="Loading version...">v?.?.?</span>
+  </div>
+</header>
+
+<div class="error-banner" id="errorBanner" style="display:none">
+  <span id="errorBannerText"></span>
+  <button id="errorBannerClose" title="Dismiss">✕</button>
+</div>
+
+<div class="main" id="mainContent" style="display:none">
+
+  <div class="categories" id="categoriesPanel">
+    <div class="cat-search">
+      <input type="text" placeholder="Filter categories..." id="catFilter">
+      <button id="collapseBtn" class="collapse-btn" title="Hide categories">◀</button>
+    </div>
+    <div class="cat-list" id="catList">
+      <div class="empty-hint" id="catEmptyHint">No categories yet. Connect your XC server and sync to get started.</div>
+    </div>
+  </div>
+
+  <button id="expandBtn" class="expand-btn" title="Show categories" style="display:none">▶</button>
+
+  <div class="right">
+
+    <div class="detail-row">
+      <div class="synopsis" id="synopsisPanel">
+        <div class="placeholder">Select a program from the guide below to see its details here.</div>
+      </div>
+      <div class="preview" id="previewPanel">
+        <div class="backdrop"></div>
+        <div class="no-video">Video Preview</div>
+        <button id="fullscreenBtn" class="fullscreen-btn" title="Full screen" style="display:none">
+          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+        <div class="chan-logo-big" id="previewLogo">
+          <svg viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+        </div>
+        <video id="previewVideo" muted playsinline></video>
+        <div class="play-overlay" id="playOverlay">
+          <div class="play-btn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+          <div class="hint" id="previewHint">Select a channel, then click to preview</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="epg-panel">
+      <div class="epg-controls">
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="progSearch" placeholder="Search programs or channels...">
+          <div class="search-results" id="searchResults"></div>
+        </div>
+        <div class="day-chips" id="dayChips"></div>
+        <button class="jump-now" id="jumpNow">Jump to now</button>
+      </div>
+      <div class="epg-body" id="epgBody">
+        <div class="epg-scroll-content" id="epgScrollContent">
+          <div class="epg-timescale" id="epgTimescale">
+            <div class="epg-corner">Channel</div>
+          </div>
+          <div id="epgRows">
+            <div class="empty-hint" id="epgEmptyHint">Pick a category on the left to load its guide.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- settings modal: XC Server / Recording settings / Recordings list -->
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal modal-wide">
+    <div class="modal-tabs">
+      <button class="modal-tab active" data-tab="xc">XC Server</button>
+      <button class="modal-tab" data-tab="epg">EPG Source</button>
+      <button class="modal-tab" data-tab="rec">Recording</button>
+      <button class="modal-tab" data-tab="notify">Notifications</button>
+      <button class="modal-tab" data-tab="list">Recordings</button>
+      <button class="modal-tab" data-tab="account">Account</button>
+      <button class="modal-tab" data-tab="admin" id="adminTabBtn" style="display:none">Admin</button>
+    </div>
+
+    <div class="modal-tab-panel" id="tabXc">
+      <label>Server address<br><input type="text" id="cfgHost" placeholder="http://your-xc-host:port"></label>
+      <label>Username<br><input type="text" id="cfgUser" placeholder="username"></label>
+      <label>Password<br><input type="password" id="cfgPass" placeholder="password"></label>
+      <div class="modal-error" id="cfgError"></div>
+      <div class="modal-actions">
+        <button id="cfgCancel" class="btn-secondary">Cancel</button>
+        <button id="cfgSave" class="btn-primary">Save &amp; Sync</button>
+      </div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabEpg" style="display:none">
+      <label>Active EPG source<br>
+        <select id="epgSourceSelect"></select>
+      </label>
+      <div class="modal-hint">
+        By default, the guide's program data comes from your XC server's own <code>xmltv.php</code>.
+        If that's missing or unreliable for some channels (common with PPV/event channels), add a
+        dedicated XMLTV feed URL below and select it here instead. It replaces the EPG data entirely
+        on your next sync - channel matching still relies on <code>epg_channel_id</code>/<code>tvg-id</code>
+        lining up between your channel list and the feed.
+      </div>
+      <div class="epg-source-list" id="epgSourceList"></div>
+      <div class="epg-source-add">
+        <input type="text" id="epgSourceName" placeholder="Name (e.g. 'EPGShare')">
+        <input type="text" id="epgSourceUrl" placeholder="https://example.com/epg.xml">
+        <button id="epgSourceAdd" class="btn-secondary">Add source</button>
+      </div>
+      <div class="modal-error" id="epgSourceError"></div>
+      <div class="modal-actions">
+        <button id="epgCancel" class="btn-secondary">Cancel</button>
+        <button id="epgSave" class="btn-primary">Save &amp; Sync</button>
+      </div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabRec" style="display:none">
+      <label>Start recording this many minutes early<br>
+        <input type="number" id="cfgPadBefore" min="0" max="120" step="1"></label>
+      <label>Keep recording this many minutes after the program ends<br>
+        <input type="number" id="cfgPadAfter" min="0" max="120" step="1"></label>
+      <label>Output format<br>
+        <select id="cfgRecFormat">
+          <option value="ts">Raw .ts (playable while still recording)</option>
+          <option value="mkv">Live .mkv (NOT reliably playable until the recording finishes)</option>
+          <option value="mkv_post">.ts while recording, then remux to finished .mkv (recommended)</option>
+        </select></label>
+      <div class="modal-hint">All three stream-copy only - no re-encoding, no quality loss, no extra
+        CPU/GPU cost. The difference is just the container and when it's finalized: Matroska (.mkv)
+        needs a proper trailer/seek-index written at the end to be well-formed, so a still-recording
+        .mkv usually won't play (or seek) reliably in Plex - raw .ts has no such requirement and is
+        readable while it's still growing. "Recommended" records as .ts (so you can watch it live/in
+        progress) and automatically remuxes to a properly finished .mkv once it's done - best of both.</div>
+      <div class="modal-hint">Recordings are written inside the container at
+        <code id="cfgRecPath">/recordings</code>, which maps to the <code>RECORDINGS_DIR</code>
+        folder you set in <code>.env</code> / <code>docker-compose.yml</code> on the host.</div>
+      <div class="modal-error" id="cfgRecError"></div>
+      <div class="modal-actions">
+        <button id="cfgRecCancel" class="btn-secondary">Cancel</button>
+        <button id="cfgRecSave" class="btn-primary">Save</button>
+      </div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabNotify" style="display:none">
+      <label>Gotify server URL<br>
+        <input type="text" id="cfgGotifyUrl" placeholder="http://gotify.local:8080"></label>
+      <label>Gotify application token<br>
+        <input type="password" id="cfgGotifyToken" placeholder="(leave blank to keep the current token)"></label>
+      <label class="rec-select-all"><input type="checkbox" id="cfgNotifyStarted"> Notify when a recording starts</label>
+      <label class="rec-select-all"><input type="checkbox" id="cfgNotifyCompleted"> Notify when a recording completes</label>
+      <label class="rec-select-all"><input type="checkbox" id="cfgNotifyFailed"> Notify when a recording fails</label>
+      <div class="modal-hint">Notifications look like: <em>Scheduled recording of "Program Name" has
+        started/completed/failed.</em> Create an application in Gotify to get a token - see
+        <code>Apps</code> in your Gotify instance.</div>
+      <div class="modal-error" id="cfgNotifyError"></div>
+      <div class="modal-actions">
+        <button id="cfgNotifyTest" class="btn-secondary">Send test notification</button>
+        <button id="cfgNotifyCancel" class="btn-secondary">Cancel</button>
+        <button id="cfgNotifySave" class="btn-primary">Save</button>
+      </div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabList" style="display:none">
+      <div class="rec-list-toolbar">
+        <label class="rec-select-all"><input type="checkbox" id="recSelectAll"> Select all</label>
+        <button id="recDeleteSelected" class="btn-secondary" disabled>Delete selected</button>
+      </div>
+      <div id="recordingsList" class="recordings-list"></div>
+      <div class="modal-actions">
+        <button id="recListClose" class="btn-secondary">Close</button>
+      </div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabAccount" style="display:none">
+      <label>First name<br><input type="text" id="acctFirstName"></label>
+      <label>Last name<br><input type="text" id="acctLastName"></label>
+      <label>Email<br><input type="email" id="acctEmail"></label>
+      <label>Username<br><input type="text" id="acctUsername"></label>
+      <div class="modal-hint">Leave the password fields blank if you only want to update your profile.</div>
+      <label>Current password<br><input type="password" id="acctCurrentPassword" autocomplete="current-password"></label>
+      <label>New password<br><input type="password" id="acctNewPassword" autocomplete="new-password"></label>
+      <div class="modal-error" id="acctError"></div>
+      <div class="modal-actions">
+        <button id="acctCancel" class="btn-secondary">Cancel</button>
+        <button id="acctLogout" class="btn-secondary">Sign out</button>
+        <button id="acctSave" class="btn-primary">Save</button>
+      </div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabAdmin" style="display:none">
+      <div class="modal-hint"><strong>OIDC / Authentik single sign-on</strong></div>
+      <label>Issuer URL<br><input type="text" id="oidcIssuer" placeholder="https://authentik.example.com/application/o/dptv-recorder/"></label>
+      <label>Client ID<br><input type="text" id="oidcClientId"></label>
+      <label>Client secret<br><input type="password" id="oidcClientSecret" placeholder="(leave blank to keep the current secret)"></label>
+      <label>Redirect URI<br><input type="text" id="oidcRedirectUri" placeholder="https://your-dptv-host/api/auth/oidc/callback"></label>
+      <div class="modal-hint">Register this exact redirect URI in Authentik's application config. Requested scopes: <code>openid profile email</code>.</div>
+      <label class="rec-select-all"><input type="checkbox" id="oidcDisablePassword"> Hide username/password login (SSO only) - only takes effect while OIDC is actually configured, so a broken SSO setup can never lock everyone out</label>
+      <div class="modal-error" id="oidcError"></div>
+      <div class="modal-actions">
+        <button id="adminCancel" class="btn-secondary">Cancel</button>
+        <button id="oidcSave" class="btn-primary">Save OIDC settings</button>
+      </div>
+
+      <div class="modal-hint" style="margin-top:14px"><strong>Cloudflare Access</strong></div>
+      <div class="modal-hint">If Cloudflare Access already authenticates users before requests reach this app
+        (e.g. using Authentik as the Access identity provider), configure this to skip DPTV Recorder's own
+        login screen entirely - the verified Cloudflare identity signs you in automatically.</div>
+      <label>Team domain<br><input type="text" id="cfTeamDomain" placeholder="yourteam.cloudflareaccess.com"></label>
+      <label>Application AUD tag<br><input type="text" id="cfAud" placeholder="from the Access application's Overview page"></label>
+      <div class="modal-error" id="cfError"></div>
+      <div class="modal-actions">
+        <button id="cfCancel" class="btn-secondary">Cancel</button>
+        <button id="cfSave" class="btn-primary">Save Cloudflare Access settings</button>
+      </div>
+
+      <div class="modal-hint" style="margin-top:10px"><strong>Users</strong></div>
+      <div id="adminUsersList" class="recordings-list"></div>
+      <div class="admin-user-add">
+        <input type="text" id="newUserUsername" placeholder="Username">
+        <input type="text" id="newUserFirstName" placeholder="First name">
+        <input type="text" id="newUserLastName" placeholder="Last name">
+        <input type="email" id="newUserEmail" placeholder="Email">
+        <input type="password" id="newUserPassword" placeholder="Temporary password">
+        <button id="newUserAdd" class="btn-secondary">Add user</button>
+      </div>
+      <div class="modal-error" id="adminUsersError"></div>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/hls.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

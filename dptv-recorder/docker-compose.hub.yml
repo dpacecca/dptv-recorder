@@ -1,0 +1,33 @@
+# Use this instead of docker-compose.yml once your image is published to Docker Hub -
+# it pulls the prebuilt image instead of building from source. Handy on Unraid, since
+# you don't need the full source checked out, just this one file.
+#
+# Usage:
+#   docker compose -f docker-compose.hub.yml up -d
+#
+# Set DOCKERHUB_IMAGE in your .env (e.g. DOCKERHUB_IMAGE=yourusername/dptv-recorder:latest)
+
+services:
+  dptv-recorder:
+    image: ${DOCKERHUB_IMAGE:-yourusername/dptv-recorder:latest}
+    container_name: dptv-recorder
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+      - ${RECORDINGS_DIR:-./recordings}:/recordings
+    environment:
+      - PORT=3000
+      - DB_PATH=/data/guide.db
+      - RECORDINGS_PATH=/recordings
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-UTC}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+    restart: unless-stopped
+    # Uncomment to pass through an Intel iGPU (VAAI/QSV) for hardware-accelerated
+    # encoding. Not required for recording or .mkv remuxing (both pure stream
+    # copy, no GPU use). Leave commented unless you have this hardware, or the
+    # container will fail to start.
+    # devices:
+    #   - /dev/dri:/dev/dri
