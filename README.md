@@ -251,3 +251,14 @@ If you're fronting the app with your own certificates instead of a
 tunnel/reverse proxy, native HTTPS is also supported directly: set
 `TLS_CERT_PATH` and `TLS_KEY_PATH` (both required together) to the
 in-container paths of your certificate and key files.
+
+## Channel/category sync behavior
+
+Like programs, categories and channels are upserted rather than wiped and
+reinserted every sync: new ones are added, changed ones (renamed channel,
+recategorized, updated logo, etc.) are updated in place, and ones genuinely
+missing from the provider's response are removed - all logged with explicit
++added/~updated/-removed counts (`docker logs`). If a sync ever gets back an
+empty categories or channels list (a transient glitch, not an actual empty
+lineup), existing data is left alone rather than being wiped - a real
+provider outage shouldn't delete your whole channel list.

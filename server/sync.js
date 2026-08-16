@@ -7,7 +7,7 @@ const cronTasks = new Map();   // userId -> node-cron task
 const syncStates = new Map();  // userId -> sync state
 
 function freshState() {
-  return { running: false, phase: null, error: null, startedAt: null, finishedAt: null, skipped: null };
+  return { running: false, phase: null, error: null, startedAt: null, finishedAt: null, skipped: null, changes: null };
 }
 
 function getSyncState(userId) {
@@ -74,16 +74,27 @@ async function performSync(userId) {
     const windowEnd = now + 8 * 24 * 60 * 60 * 1000;   // keep up to 8 days ahead
 
     const skipped = { categories: 0, channels: 0, programmes: 0 };
+    const changes = { categoriesAdded: 0, categoriesUpdated: 0, categoriesRemoved: 0,
+                       channelsAdded: 0, channelsUpdated: 0, channelsRemoved: 0 };
 
     const tx = db.transaction(() => {
-      db.prepare('DELETE FROM categories WHERE user_id = ?').run(userId);
-      const insCat = db.prepare('INSERT INTO categories (user_id, id, name, sort_order) VALUES (?, ?, ?, ?)');
+      const existingCategoryIds = new Set(
+        db.prepare('SELECT id FROM categories WHERE user_id = ?').all(userId).map((r) => r.id)
+      );
+      const upsertCat = db.prepare(`
+        INSERT INTO categories (user_id, id, name, sort_order) VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, id) DO UPDATE SET name = excluded.name, sort_order = excluded.sort_order
+        WHERE name != excluded.name OR sort_order != excluded.sort_order
+      `);
       const knownCategoryIds = new Set();
       categories.forEach((c, i) => {
         if (c.category_id === undefined || c.category_id === null) { skipped.categories++; return; }
         const id = String(c.category_id);
         try {
-          insCat.run(userId, id, c.category_name != null ? String(c.category_name) : '(Unnamed)', i);
+          const info = upsertCat.run(userId, id, c.category_name != null ? String(c.category_name) : '(Unnamed)', i);
+          if (info.changes > 0) {
+            if (existingCategoryIds.has(id)) changes.categoriesUpdated++; else changes.categoriesAdded++;
+          }
           knownCategoryIds.add(id);
         } catch (err) {
           skipped.categories++;
@@ -103,35 +114,79 @@ async function performSync(userId) {
         if (id && !knownCategoryIds.has(id)) orphanedCategoryIds.add(id);
       });
       orphanedCategoryIds.forEach((id) => {
-        insCat.run(userId, id, `Uncategorized (${id})`, nextSortOrder++);
+        const info = upsertCat.run(userId, id, `Uncategorized (${id})`, nextSortOrder++);
+        if (info.changes > 0 && !existingCategoryIds.has(id)) changes.categoriesAdded++;
         knownCategoryIds.add(id);
       });
       if (orphanedCategoryIds.size > 0) {
         console.warn(`[sync] user ${userId}: ${orphanedCategoryIds.size} category id(s) referenced by channels weren't in get_live_categories - created placeholder categories for them so those channels stay visible`);
       }
 
-      db.prepare('DELETE FROM channels WHERE user_id = ?').run(userId);
-      const insChan = db.prepare(`
+      // Only prune categories that are confirmed gone - if the provider
+      // returned nothing usable this round (categories AND streams both
+      // empty), that's much more likely a transient glitch than every
+      // category being genuinely deleted, so skip pruning rather than wipe
+      // everything out over what's probably a blip.
+      if (knownCategoryIds.size > 0) {
+        const toRemove = [...existingCategoryIds].filter((id) => !knownCategoryIds.has(id));
+        if (toRemove.length > 0) {
+          const placeholders = toRemove.map(() => '?').join(',');
+          db.prepare(`DELETE FROM categories WHERE user_id = ? AND id IN (${placeholders})`).run(userId, ...toRemove);
+          changes.categoriesRemoved = toRemove.length;
+        }
+      } else if (existingCategoryIds.size > 0) {
+        console.warn(`[sync] user ${userId}: provider returned no usable categories this sync - leaving existing categories untouched rather than deleting them (likely a transient glitch)`);
+      }
+
+      const existingChannelIds = new Set(
+        db.prepare('SELECT id FROM channels WHERE user_id = ?').all(userId).map((r) => r.id)
+      );
+      const upsertChan = db.prepare(`
         INSERT INTO channels (user_id, id, name, logo, category_id, epg_channel_id, stream_num)
         VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, id) DO UPDATE SET
+          name = excluded.name, logo = excluded.logo, category_id = excluded.category_id,
+          epg_channel_id = excluded.epg_channel_id, stream_num = excluded.stream_num
+        WHERE name != excluded.name OR logo IS NOT excluded.logo OR category_id != excluded.category_id
+           OR epg_channel_id IS NOT excluded.epg_channel_id OR stream_num IS NOT excluded.stream_num
       `);
+      const freshChannelIds = new Set();
       streams.forEach((s) => {
         if (s.stream_id === undefined || s.stream_id === null) { skipped.channels++; return; }
+        const id = String(s.stream_id);
         try {
-          insChan.run(
+          const info = upsertChan.run(
             userId,
-            String(s.stream_id),
+            id,
             s.name != null ? String(s.name) : `Channel ${s.stream_id}`,
             s.stream_icon || null,
             s.category_id != null ? String(s.category_id) : '',
             s.epg_channel_id || null,
             s.num != null ? Number(s.num) || null : null
           );
+          if (info.changes > 0) {
+            if (existingChannelIds.has(id)) changes.channelsUpdated++; else changes.channelsAdded++;
+          }
+          freshChannelIds.add(id);
         } catch (err) {
           skipped.channels++;
           console.warn(`[sync] user ${userId}: skipped a malformed channel:`, err.message, JSON.stringify(s).slice(0, 200));
         }
       });
+
+      // Same transient-glitch guard as categories above.
+      if (freshChannelIds.size > 0) {
+        const toRemove = [...existingChannelIds].filter((id) => !freshChannelIds.has(id));
+        if (toRemove.length > 0) {
+          const placeholders = toRemove.map(() => '?').join(',');
+          db.prepare(`DELETE FROM channels WHERE user_id = ? AND id IN (${placeholders})`).run(userId, ...toRemove);
+          changes.channelsRemoved = toRemove.length;
+        }
+      } else if (existingChannelIds.size > 0) {
+        console.warn(`[sync] user ${userId}: provider returned no usable channels this sync - leaving existing channels untouched rather than deleting them (likely a transient glitch)`);
+      }
+
+      console.log(`[sync] user ${userId}: categories +${changes.categoriesAdded} ~${changes.categoriesUpdated} -${changes.categoriesRemoved}, channels +${changes.channelsAdded} ~${changes.channelsUpdated} -${changes.channelsRemoved}`);
 
       // Programs are upserted, not wiped - a full wipe-and-reinsert every
       // sync briefly empties the table and touches every row even when
@@ -175,6 +230,7 @@ async function performSync(userId) {
     setSetting(userId, 'last_sync_at', Date.now());
     state.phase = 'done';
     state.skipped = skipped;
+    state.changes = changes;
     console.log(`[sync] user ${userId}: completed successfully`);
   } catch (err) {
     const failedPhase = state.phase;
