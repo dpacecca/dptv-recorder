@@ -852,11 +852,15 @@
     }
   }
 
-  els.previewPanel.addEventListener('click', () => {
+  els.previewPanel.addEventListener('click', (e) => {
+    // Allow native controls to handle clicks when visible
     if (els.previewPanel.classList.contains('playing')) {
-      if (els.previewVideo.paused) els.previewVideo.play();
-      else els.previewVideo.pause();
-    } else {
+      // If video has controls, let them handle the interaction
+      if (!els.previewVideo.controls) {
+        if (els.previewVideo.paused) els.previewVideo.play();
+        else els.previewVideo.pause();
+      }
+    } else if (e.target === els.previewPanel || e.target.closest('.play-btn')) {
       startPreview();
     }
   });

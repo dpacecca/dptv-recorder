@@ -207,6 +207,18 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000;
   z-index:1; opacity:0; transition:opacity .2s;
 }
+.preview #previewVideo::-webkit-media-controls {
+  display: flex;
+}
+/* Style video controls for better visibility */
+.preview #previewVideo::-webkit-media-controls-panel {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+.preview #previewVideo::-webkit-media-controls-play-button,
+.preview #previewVideo::-webkit-media-controls-mute-button,
+.preview #previewVideo::-webkit-media-controls-fullscreen-button {
+  color: #E8EAED;
+}
 .preview.playing #previewVideo{ opacity:1; }
 .preview.playing .backdrop{ opacity:0; }
 .preview .chan-logo-big{
