@@ -830,7 +830,11 @@
     els.previewHint.textContent = 'Connecting...';
 
     if (window.Hls && window.Hls.isSupported()) {
-      const hls = new window.Hls({ maxBufferLength: 15 });
+      const hls = new window.Hls({ 
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        backBufferLength: 30
+      });
       state.hls = hls;
       hls.loadSource(src);
       hls.attachMedia(els.previewVideo);
