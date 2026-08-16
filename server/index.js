@@ -12,6 +12,7 @@ const { initScheduler } = require('./sync');
 const recorder = require('./recorder');
 const { bootstrapDefaultAdmin } = require('./auth');
 const pkg = require('../package.json');
+const { cloudflareAccessMiddleware } = require('./cloudflareAccess');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +27,7 @@ app.set('trust proxy', 1);
 
 app.use(express.json());
 app.use(cookieParser());
+app.use(cloudflareAccessMiddleware);
 
 app.get('/api/version', (req, res) => {
   res.json({ version: pkg.version, buildTime: BUILD_TIME, node: process.version });
