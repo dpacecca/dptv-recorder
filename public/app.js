@@ -1013,7 +1013,20 @@
         const src = `/api/stream/${encodeURIComponent(channel.id)}?format=ts`;
         const player = window.mpegts.createPlayer(
           { type: 'mpegts', isLive: true, url: src },
-          { enableStashBuffer: true, liveBufferLatencyChasing: true }
+          {
+            enableStashBuffer: true,
+            // ~1.5MB, several seconds of cushion at a typical SD/HD
+            // bitrate - absorbs network jitter through the proxy instead of
+            // stalling on every small hiccup (mpegts.js defaults to 384KB)
+            stashInitialSize: 1536 * 1024,
+            // this is a "click to preview" panel, not anything
+            // latency-sensitive - explicitly NOT chasing the live edge here.
+            // liveBufferLatencyChasing (left at its default: off) keeps the
+            // buffer trimmed to ~1.5s of the live edge by design, which is
+            // exactly what caused the jumpiness: constantly seeking/skipping
+            // to stay that close rather than just playing smoothly a few
+            // seconds behind.
+          }
         );
         state.mpegtsPlayer = player;
         player.on(window.mpegts.Events.ERROR, (type, detail) => reconnect(detail || type));
