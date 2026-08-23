@@ -38,9 +38,11 @@
     searchResults: document.getElementById('searchResults'),
     dayChips: document.getElementById('dayChips'),
     jumpNow: document.getElementById('jumpNow'),
+    viewToggleBtn: document.getElementById('viewToggleBtn'),
     epgBody: document.getElementById('epgBody'),
     epgTimescale: document.getElementById('epgTimescale'),
     epgRows: document.getElementById('epgRows'),
+    epgList: document.getElementById('epgList'),
     modal: document.getElementById('settingsModal'),
     cfgHost: document.getElementById('cfgHost'),
     cfgUser: document.getElementById('cfgUser'),
@@ -80,6 +82,12 @@
     currentChannel: null,
     currentProgram: null,
     hls: null,
+    // list view is the mobile-friendly default; grid stays default on wider
+    // screens where 2D panning across the timeline is comfortable
+    viewMode: window.innerWidth <= 860 ? 'list' : 'grid',
+    listDay: 0,
+    epgChannels: [],
+    epgProgramsMap: {},
   };
 
   function showError(message) {
@@ -511,7 +519,13 @@
       const md = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       chip.innerHTML = `<span class="dow">${dow}</span>${md}`;
       chip.addEventListener('click', () => {
-        els.epgBody.scrollLeft = day * DAY_WIDTH;
+        if (state.viewMode === 'list') {
+          state.listDay = day;
+          [...els.dayChips.children].forEach((c, i) => c.classList.toggle('active', i === day));
+          renderEpgList(state.epgChannels, state.epgProgramsMap);
+        } else {
+          els.epgBody.scrollLeft = day * DAY_WIDTH;
+        }
       });
       els.dayChips.appendChild(chip);
     }
@@ -527,20 +541,76 @@
     [...els.dayChips.children].forEach((chip, i) => chip.classList.toggle('active', i === day));
   });
 
+  // ---------------- view mode: grid (2D timeline) <-> list (vertical, per day) ----------------
+  function renderActiveEpgView() {
+    if (state.viewMode === 'list') {
+      renderEpgList(state.epgChannels, state.epgProgramsMap);
+    } else {
+      renderEpgRows(state.epgChannels, state.epgProgramsMap);
+    }
+  }
+
+  function setViewMode(mode) {
+    state.viewMode = mode;
+    els.epgBody.style.display = mode === 'grid' ? '' : 'none';
+    els.epgList.style.display = mode === 'list' ? '' : 'none';
+    els.viewToggleBtn.textContent = mode === 'grid' ? '☰ List' : '▦ Grid';
+    els.viewToggleBtn.title = mode === 'grid' ? 'Switch to list view' : 'Switch to grid view';
+    if (state.epgChannels.length) renderActiveEpgView();
+  }
+
+  els.viewToggleBtn.addEventListener('click', () => {
+    setViewMode(state.viewMode === 'grid' ? 'list' : 'grid');
+  });
+  setViewMode(state.viewMode);
+
+  function resetListToToday() {
+    state.listDay = 0;
+    [...els.dayChips.children].forEach((c, i) => c.classList.toggle('active', i === 0));
+    renderEpgList(state.epgChannels, state.epgProgramsMap);
+  }
+
+  function scrollListToLive() {
+    requestAnimationFrame(() => {
+      const live = els.epgList.querySelector('.epg-list-prog.live');
+      if (live) live.scrollIntoView({ block: 'center' });
+    });
+  }
+
+  function jumpToNowInList() {
+    resetListToToday();
+    scrollListToLive();
+  }
+
   els.jumpNow.addEventListener('click', () => {
-    const nowOffsetMin = (Date.now() - timelineStart) / 60000;
-    els.epgBody.scrollLeft = Math.max(0, nowOffsetMin * PX_PER_MIN - 300);
+    if (state.viewMode === 'list') {
+      jumpToNowInList();
+    } else {
+      const nowOffsetMin = (Date.now() - timelineStart) / 60000;
+      els.epgBody.scrollLeft = Math.max(0, nowOffsetMin * PX_PER_MIN - 300);
+    }
   });
 
   // ---------------- EPG rows ----------------
   async function loadEpg(categoryId) {
     els.epgRows.innerHTML = `<div class="empty-hint">Loading guide...</div>`;
+    els.epgList.innerHTML = `<div class="empty-hint">Loading guide...</div>`;
     const data = await api(`/epg?category_id=${encodeURIComponent(categoryId)}&start=${timelineStart}&end=${timelineEnd}`);
-    renderEpgRows(data.channels, data.programs);
-    // only now does the grid actually have real (7-day-wide) content to scroll
-    // within - jumping to "now" any earlier is a no-op, since the browser
-    // clamps scrollLeft back to 0 on a container with nothing to scroll yet.
-    requestAnimationFrame(() => els.jumpNow.click());
+    state.epgChannels = data.channels;
+    state.epgProgramsMap = data.programs;
+    if (state.viewMode === 'list') {
+      // synchronous, unlike the grid path below - a caller that navigates to
+      // a specific program right after loadEpg (e.g. search) must not race
+      // against an async re-render that would wipe its selection
+      resetListToToday();
+      scrollListToLive();
+    } else {
+      renderActiveEpgView();
+      // only now does the grid actually have real (7-day-wide) content to scroll
+      // within - jumping to "now" any earlier is a no-op, since the browser
+      // clamps scrollLeft back to 0 on a container with nothing to scroll yet.
+      requestAnimationFrame(() => els.jumpNow.click());
+    }
   }
 
   function renderEpgRows(channels, programsMap) {
@@ -602,11 +672,64 @@
     }
   }
 
-  function selectProgram(el, channel, prog, isLive) {
-    document.querySelectorAll('.epg-prog.selected').forEach((e) => e.classList.remove('selected'));
+  // list view: same channels/programs data as the grid, but shown as a
+  // vertical, one-day-at-a-time list - normal vertical scrolling instead of
+  // 2D panning across a fixed-width timeline, which is what makes the grid
+  // awkward to use on a phone.
+  function renderEpgList(channels, programsMap) {
+    els.epgList.innerHTML = '';
+
+    if (!channels || channels.length === 0) {
+      els.epgList.innerHTML = `<div class="empty-hint">No channels in this category yet.</div>`;
+      return;
+    }
+
+    const dayStart = timelineStart + state.listDay * 24 * 60 * 60 * 1000;
+    const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    channels.forEach((ch) => {
+      const progs = (programsMap[ch.id] || []).filter((p) => p.start < dayEnd && p.stop > dayStart);
+
+      const section = document.createElement('div');
+      section.className = 'epg-list-channel';
+      section.dataset.channelId = ch.id;
+
+      const head = document.createElement('div');
+      head.className = 'epg-list-chanhead';
+      const initials = (ch.name || '?').slice(0, 2).toUpperCase();
+      head.innerHTML = `
+        <div class="logo">${ch.logo ? `<img src="${escapeAttr(ch.logo)}" alt="" onerror="this.remove()">` : ''}${ch.logo ? '' : initials}</div>
+        <div><div class="cname">${escapeHtml(ch.name)}</div><div class="cnum">CH ${ch.stream_num || ''}</div></div>
+      `;
+      section.appendChild(head);
+
+      const list = document.createElement('div');
+      list.className = 'epg-list-progs';
+      if (progs.length === 0) {
+        list.innerHTML = `<div class="epg-list-empty">No programs listed for this day.</div>`;
+      } else {
+        progs.forEach((p) => {
+          const isLive = now >= p.start && now < p.stop;
+          const durMin = Math.round((p.stop - p.start) / 60000);
+          const row = document.createElement('div');
+          row.className = 'epg-list-prog' + (isLive ? ' live' : '');
+          row.dataset.start = p.start;
+          row.innerHTML = `<div class="tm">${fmtTime(p.start)} · ${durMin}m</div><div class="t">${escapeHtml(p.title)}</div>${isLive ? '<span class="tag">LIVE</span>' : ''}`;
+          row.addEventListener('click', () => selectProgram(row, ch, p, isLive, head));
+          list.appendChild(row);
+        });
+      }
+      section.appendChild(list);
+      els.epgList.appendChild(section);
+    });
+  }
+
+  function selectProgram(el, channel, prog, isLive, channelHeadEl) {
+    document.querySelectorAll('.epg-prog.selected, .epg-list-prog.selected').forEach((e) => e.classList.remove('selected'));
     el.classList.add('selected');
-    document.querySelectorAll('.epg-channel.active').forEach((e) => e.classList.remove('active'));
-    el.closest('.epg-row').querySelector('.epg-channel').classList.add('active');
+    document.querySelectorAll('.epg-channel.active, .epg-list-chanhead.active').forEach((e) => e.classList.remove('active'));
+    (channelHeadEl || el.closest('.epg-row').querySelector('.epg-channel')).classList.add('active');
 
     state.currentProgram = { channel, prog };
 
@@ -906,18 +1029,22 @@
 
   function filterVisibleEpg(q) {
     const query = q.toLowerCase();
-    document.querySelectorAll('.epg-row').forEach((row) => {
-      const chanName = row.querySelector('.cname').textContent.toLowerCase();
-      const progEls = row.querySelectorAll('.epg-prog');
-      let anyMatch = query === '' || chanName.includes(query);
-      progEls.forEach((p) => {
-        const t = p.querySelector('.t').textContent.toLowerCase();
-        const match = query !== '' && t.includes(query);
-        p.style.outline = match ? '2px solid var(--teal)' : 'none';
-        if (match) anyMatch = true;
+    const applyFilter = (groups, chanSel, progSel) => {
+      groups.forEach((group) => {
+        const chanName = group.querySelector(chanSel).textContent.toLowerCase();
+        const progEls = group.querySelectorAll(progSel);
+        let anyMatch = query === '' || chanName.includes(query);
+        progEls.forEach((p) => {
+          const t = p.querySelector('.t').textContent.toLowerCase();
+          const match = query !== '' && t.includes(query);
+          p.style.outline = match ? '2px solid var(--teal)' : 'none';
+          if (match) anyMatch = true;
+        });
+        group.style.opacity = anyMatch ? '1' : '0.25';
       });
-      row.style.opacity = anyMatch ? '1' : '0.25';
-    });
+    };
+    applyFilter(document.querySelectorAll('.epg-row'), '.cname', '.epg-prog');
+    applyFilter(document.querySelectorAll('.epg-list-channel'), '.cname', '.epg-list-prog');
   }
 
   async function runSearch(q) {
@@ -962,12 +1089,32 @@
         els.searchResults.classList.remove('open');
         els.progSearch.value = '';
         await selectCategory(categoryId);
-        // scroll to the channel row and, if a specific program, its start time
+
+        const startMs = item.dataset.start ? Number(item.dataset.start) : null;
+
+        if (state.viewMode === 'list') {
+          // scroll to the channel section and, if a specific program, its day/time
+          if (startMs !== null) {
+            state.listDay = Math.max(0, Math.floor((startMs - timelineStart) / (24 * 60 * 60 * 1000)));
+            [...els.dayChips.children].forEach((c, i) => c.classList.toggle('active', i === state.listDay));
+            renderEpgList(state.epgChannels, state.epgProgramsMap);
+          }
+          const section = document.querySelector(`.epg-list-channel[data-channel-id="${cssEscape(channelId)}"]`);
+          if (section) {
+            section.scrollIntoView({ block: 'start' });
+            if (startMs !== null) {
+              const prog = [...section.querySelectorAll('.epg-list-prog')].find((p) => Number(p.dataset.start) === startMs);
+              if (prog) prog.click();
+            }
+          }
+          return;
+        }
+
+        // grid view: scroll to the channel row and, if a specific program, its start time
         const row = document.querySelector(`.epg-row[data-channel-id="${cssEscape(channelId)}"]`);
         if (row) {
           row.scrollIntoView({ block: 'center' });
-          if (item.dataset.start) {
-            const startMs = Number(item.dataset.start);
+          if (startMs !== null) {
             const offsetMin = (startMs - timelineStart) / 60000;
             els.epgBody.scrollLeft = Math.max(0, offsetMin * PX_PER_MIN - 300);
             const block = [...row.querySelectorAll('.epg-prog')].find((b) => {
