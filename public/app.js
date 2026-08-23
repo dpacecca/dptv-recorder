@@ -83,9 +83,11 @@
     currentProgram: null,
     hls: null,
     mpegtsPlayer: null,
-    // list view is the mobile-friendly default; grid stays default on wider
-    // screens where 2D panning across the timeline is comfortable
-    viewMode: window.innerWidth <= 860 ? 'list' : 'grid',
+    // grid is the default everywhere - now that mobile is a normal
+    // scrolling page rather than a fixed shell, the grid's horizontal
+    // panning is no longer fighting a clipped viewport. List view is still
+    // available via the toggle for anyone who prefers it.
+    viewMode: 'grid',
     listDay: 0,
     epgChannels: [],
     epgProgramsMap: {},
