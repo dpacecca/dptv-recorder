@@ -555,16 +555,38 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
     box-shadow:8px 0 24px rgba(0,0,0,0.5);
   }
   .main.categories-collapsed .categories{ transform:translateX(-100%); }
-  .expand-btn{ top:8px; }
+  /* bigger hit target and a visible border/shadow so it reads as a floating
+     control rather than blending into whatever text happens to sit behind
+     it - on a touchscreen a 34px button flush against body text is an easy
+     miss */
+  .expand-btn{
+    top:8px; width:40px; height:40px; border-color:var(--amber); color:var(--amber);
+    box-shadow:0 2px 10px rgba(0,0,0,0.5);
+  }
 
   /* synopsis + preview stack instead of sitting side by side - there's not
-     enough width to do both justice at once on a phone */
+     enough width to do both justice at once on a phone. Both are kept
+     deliberately compact here: the guide underneath is the primary content
+     on a phone and needs the vertical room, not this panel. */
   .right{ grid-template-rows: auto 1fr; }
-  .detail-row{ grid-template-columns: 1fr; grid-template-rows: auto minmax(180px, 32vh); }
-  .synopsis{ border-right:none; border-bottom:1px solid var(--border); padding:14px 16px; max-height:26vh; }
-  .synopsis .prog-title{ font-size:18px; }
-  .synopsis .prog-desc{ font-size:12.5px; -webkit-line-clamp:3; }
-  .preview{ min-height:180px; }
+  .detail-row{ grid-template-columns: 1fr; grid-template-rows: auto minmax(120px, 20vh); }
+  .synopsis{
+    border-right:none; border-bottom:1px solid var(--border); padding:10px 16px 10px 56px;
+    /* a floor, not just a vh-scaled cap: content height here is driven by
+       font size, not viewport height, so a pure "Xvh" cap clips the record
+       button on shorter phones even though it fit on a taller one */
+    max-height:max(152px, 15vh);
+  }
+  .synopsis .prog-meta{ margin-bottom:6px; }
+  .synopsis .prog-title{
+    font-size:16px; margin-bottom:3px;
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
+  }
+  .synopsis .prog-desc{
+    font-size:12px; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:1; overflow:hidden;
+  }
+  .synopsis .record-control{ margin-top:6px; }
+  .preview{ min-height:120px; }
 
   /* narrower channel column frees up more room for the actual timeline */
   .epg-corner, .epg-channel{ width:120px; min-width:120px; }
@@ -592,7 +614,6 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 }
 
 @media (max-width: 480px) {
-  .synopsis .prog-title{ font-size:16px; }
   .record-btn{ font-size:11px; padding:8px 12px; }
   .epg-controls{ flex-wrap:wrap; gap:8px; }
   .epg-controls .search-wrap{ max-width:none; flex-basis:100%; order:1; }

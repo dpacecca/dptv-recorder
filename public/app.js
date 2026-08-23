@@ -969,6 +969,8 @@
         backBufferLength: 30
       });
       state.hls = hls;
+      let networkRetries = 0;
+      let recoveredMediaError = false;
       hls.loadSource(src);
       hls.attachMedia(els.previewVideo);
       hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
@@ -976,11 +978,29 @@
         els.previewPanel.classList.add('playing');
         document.getElementById('fullscreenBtn').style.display = 'flex';
       });
+      // a healthy fragment load is a strong signal the connection has
+      // recovered - reset the retry budget so an occasional blip later in a
+      // long viewing session doesn't inherit an already-exhausted counter
+      hls.on(window.Hls.Events.FRAG_LOADED, () => { networkRetries = 0; recoveredMediaError = false; });
       hls.on(window.Hls.Events.ERROR, (evt, data) => {
-        if (data.fatal) {
-          els.previewHint.textContent = 'Stream unavailable (' + data.details + ')';
-          els.previewPanel.classList.remove('playing');
+        if (!data.fatal) return;
+        // most fatal errors here are a momentary blip in the proxy/upstream
+        // fetch (a dropped playlist or segment request) rather than the
+        // stream actually ending - hls.js's own recommended recovery is to
+        // just restart the load/media pipeline rather than give up outright
+        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 3) {
+          networkRetries += 1;
+          els.previewHint.textContent = 'Reconnecting...';
+          hls.startLoad();
+          return;
         }
+        if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && !recoveredMediaError) {
+          recoveredMediaError = true;
+          hls.recoverMediaError();
+          return;
+        }
+        els.previewHint.textContent = 'Stream unavailable (' + data.details + ')';
+        els.previewPanel.classList.remove('playing');
       });
     } else if (els.previewVideo.canPlayType('application/vnd.apple.mpegurl')) {
       els.previewVideo.src = src;
