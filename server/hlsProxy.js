@@ -177,6 +177,9 @@ async function tsProxyHandler(req, res) {
 
   const controller = new AbortController();
   req.on('close', () => controller.abort());
+  // belt-and-suspenders alongside the source-stream handler below: a socket
+  // reset while writing can also surface as an 'error' directly on `res`
+  res.on('error', () => {});
 
   let upstream;
   try {
@@ -192,10 +195,22 @@ async function tsProxyHandler(req, res) {
 
   res.setHeader('Content-Type', upstream.headers.get('content-type') || 'video/mp2t');
   res.setHeader('Cache-Control', 'no-store');
-  Readable.fromWeb(upstream.body).pipe(res).on('error', () => {
-    // client disconnected mid-stream, or a similarly benign pipe failure -
-    // the connection is already on its way down, nothing more to do
+
+  // IMPORTANT: .pipe() returns its destination, not its source - chaining
+  // .on('error') onto it (as this used to do) attaches the handler to `res`,
+  // not to this source stream. That left this stream's own errors (e.g. the
+  // AbortError this same req.on('close') deliberately triggers by aborting
+  // the fetch mid-read once the client disconnects) completely unhandled -
+  // an uncaught 'error' event on any EventEmitter, streams included, throws
+  // and crashes the whole process. The listener has to be attached here,
+  // before piping, to actually catch it.
+  const source = Readable.fromWeb(upstream.body);
+  source.on('error', () => {
+    // client disconnected mid-stream (most commonly our own abort above),
+    // or a similarly benign pipe failure - the connection is already on its
+    // way down, nothing more to do
   });
+  source.pipe(res);
 }
 
 module.exports = { makeToken, proxyPathFor, hlsProxyHandler, tsProxyPathFor, tsProxyHandler };
