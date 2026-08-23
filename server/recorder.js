@@ -134,7 +134,7 @@ const EARLY_EXIT_THRESHOLD_MS = 20000; // exiting >20s before rec_end counts as 
                                         // finish via -t naturally lands within a couple seconds of it
 const RESUME_BACKOFF_MS = 4000;
 
-function buildFfmpegArgs(streamUrl, outputPath, durationSec, muxer) {
+function buildFfmpegArgs(streamUrl, output, durationSec, muxer) {
   return [
     '-y',
     // tolerate brief network drop-outs/buffering instead of failing outright -
@@ -158,19 +158,28 @@ function buildFfmpegArgs(streamUrl, outputPath, durationSec, muxer) {
     '-avoid_negative_ts', 'make_zero',
     '-f', muxer,
     '-t', String(durationSec),
-    outputPath,
+    output,
   ];
 }
 
 // Spawns one ffmpeg run and resolves when it exits - never rejects, so the
 // orchestrator below can treat every outcome (clean exit, crash, spawn
 // failure) uniformly.
-function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer) {
+//
+// When `appendTo` is given (the ts/mpegts resumable path), ffmpeg muxes to
+// stdout instead of a file path, piped straight onto that (already-open,
+// shared across every attempt for this recording) write stream as bytes
+// arrive - so the file on disk grows continuously in real time, exactly
+// like an uninterrupted recording, instead of only advancing in bursts
+// whenever a resumed attempt happens to fully finish. Raw MPEG-TS has no
+// trailer/index, so appending mid-stream (even across separate ffmpeg
+// processes) is always safe.
+function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendTo) {
   return new Promise((resolve) => {
     let proc;
     try {
-      proc = spawn('ffmpeg', buildFfmpegArgs(streamUrl, outputPath, durationSec, muxer), {
-        stdio: ['ignore', 'ignore', 'pipe'],
+      proc = spawn('ffmpeg', buildFfmpegArgs(streamUrl, appendTo ? 'pipe:1' : outputPath, durationSec, muxer), {
+        stdio: appendTo ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'ignore', 'pipe'],
       });
     } catch (err) {
       resolve({ code: -1, stderrTail: 'Could not start ffmpeg: ' + err.message });
@@ -179,6 +188,12 @@ function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer) {
     activeProcs.set(row.id, { proc });
     let stderrTail = '';
     proc.stderr.on('data', (chunk) => { stderrTail = (stderrTail + chunk.toString()).slice(-4000); });
+    if (appendTo) {
+      // {end:false}: a resume reconnects a *new* ffmpeg process onto this
+      // same still-open destination stream - ending it when this process's
+      // stdout closes would break every subsequent attempt
+      proc.stdout.pipe(appendTo, { end: false });
+    }
     proc.on('close', (code) => {
       activeProcs.delete(row.id);
       resolve({ code, stderrTail });
@@ -190,22 +205,11 @@ function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer) {
   });
 }
 
-// Appends one file onto another via streams (not readFileSync/appendFileSync -
-// these can run for hours and produce multi-GB files, so this needs to be
-// memory-safe) and removes the source afterward. Valid for raw MPEG-TS,
-// which - unlike Matroska - can be safely concatenated at the byte level.
-function appendFile(mainPath, partPath) {
-  return new Promise((resolve, reject) => {
-    const readStream = fs.createReadStream(partPath);
-    const writeStream = fs.createWriteStream(mainPath, { flags: 'a' });
-    readStream.on('error', reject);
-    writeStream.on('error', reject);
-    writeStream.on('finish', () => {
-      fs.unlink(partPath, () => {});
-      resolve();
-    });
-    readStream.pipe(writeStream);
-  });
+// Resolves once a writable stream has fully flushed - used so a subsequent
+// fs.statSync of the file it was writing reflects the true final size,
+// rather than racing the stream's own internal buffering.
+function closeStream(stream) {
+  return new Promise((resolve) => stream.end(resolve));
 }
 
 async function startRecording(row) {
@@ -227,9 +231,21 @@ async function startRecording(row) {
   db.prepare(`UPDATE recordings SET status='recording', filename=? WHERE id=?`).run(filename, row.id);
   notifier.notifyRecordingStarted(row.user_id, row.program_title);
 
+  // One append stream shared across every attempt for this recording (only
+  // for the resumable ts/mpegts path - live "mkv" still writes straight to
+  // its file path via ffmpeg, unchanged, since it can't be safely resumed
+  // by appending regardless of how the bytes get to disk).
+  const appendStream = recordAsTs ? fs.createWriteStream(outputPath, { flags: 'a' }) : null;
+  let appendStreamErr = '';
+  if (appendStream) {
+    appendStream.on('error', (err) => {
+      appendStreamErr = err.message;
+      console.error(`[recorder] #${row.id} error writing to ${outputPath}: ${err.message}`);
+    });
+  }
+
   let attempt = 0;
   let lastResult = null;
-  let resumed = false;
 
   while (true) {
     const durationSec = Math.max(1, Math.round((row.rec_end - Date.now()) / 1000));
@@ -242,36 +258,18 @@ async function startRecording(row) {
       break;
     }
     const streamUrl = `http://127.0.0.1:${PORT}${streamPath}`;
-    const segmentPath = attempt === 0 ? outputPath : `${outputPath}.resume${attempt}.part`;
 
-    console.log(`[recorder] #${row.id} (attempt ${attempt + 1}) recording "${row.program_title}" -> ${segmentPath} (${durationSec}s, ${muxer})`);
-    const result = await runFfmpegSegment(row, streamUrl, segmentPath, durationSec, muxer);
+    console.log(`[recorder] #${row.id} (attempt ${attempt + 1}) recording "${row.program_title}" -> ${outputPath} (${durationSec}s, ${muxer})`);
+    const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream);
     lastResult = result;
+    if (appendStreamErr) lastResult.stderrTail = (lastResult.stderrTail || '') + '\n' + appendStreamErr;
 
-    // cancelRecording() already handled cleanup of the main output file if
-    // this happened mid-attempt - but a resume attempt writes to a separate
-    // temp segment file that wouldn't be touched by that, so clean it up here
     const current = rowById(row.id);
     if (!current || current.status === 'cancelled') {
-      if (attempt > 0 && segmentPath !== outputPath) fs.unlink(segmentPath, () => {});
+      // cancelRecording() already handles killing ffmpeg and cleaning up the
+      // output file - just make sure our own handle on it is closed too
+      if (appendStream) await closeStream(appendStream);
       return;
-    }
-
-    if (attempt > 0) {
-      // fold this attempt's output back onto the main file (whatever the
-      // outcome - even a failed/short attempt may have captured something)
-      const segSize = fs.existsSync(segmentPath) ? fs.statSync(segmentPath).size : 0;
-      if (segSize > 0) {
-        try {
-          await appendFile(outputPath, segmentPath);
-          resumed = true;
-        } catch (err) {
-          console.warn(`[recorder] #${row.id} could not append resumed segment: ${err.message}`);
-          fs.unlink(segmentPath, () => {});
-        }
-      } else {
-        fs.unlink(segmentPath, () => {});
-      }
     }
 
     const msRemaining = row.rec_end - Date.now();
@@ -289,7 +287,8 @@ async function startRecording(row) {
     await new Promise((r) => setTimeout(r, RESUME_BACKOFF_MS));
   }
 
-  finalizeRecording(row, format, outputPath, lastResult, resumed);
+  if (appendStream) await closeStream(appendStream);
+  finalizeRecording(row, format, outputPath, lastResult, attempt > 0);
 }
 
 function finalizeRecording(row, format, outputPath, result, resumed) {
