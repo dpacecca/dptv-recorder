@@ -7,7 +7,7 @@ const cookieParser = require('cookie-parser');
 require('./db'); // ensures schema exists
 const routes = require('./routes');
 const authRoutes = require('./authRoutes');
-const { hlsProxyHandler } = require('./hlsProxy');
+const { hlsProxyHandler, tsProxyHandler } = require('./hlsProxy');
 const { initScheduler } = require('./sync');
 const recorder = require('./recorder');
 const { bootstrapDefaultAdmin, createSession, setSessionCookie, SESSION_COOKIE } = require('./auth');
@@ -56,10 +56,11 @@ app.get('/api/version', (req, res) => {
   res.json({ version: pkg.version, buildTime: BUILD_TIME, node: process.version });
 });
 
-// Unauthenticated: ffmpeg and the browser both hit this directly with no
-// session cookie. Its security model is the opaque, short-lived per-stream
+// Unauthenticated: ffmpeg and the browser both hit these directly with no
+// session cookie. Their security model is the opaque, short-lived per-stream
 // token in the URL itself, not a login session.
 app.get('/api/hls/:tokenExt', hlsProxyHandler);
+app.get('/api/live-ts/:token', tsProxyHandler);
 
 // Auth endpoints (login, OIDC, password change, admin user management) -
 // intentionally NOT behind the main auth middleware, since /login and the

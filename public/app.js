@@ -82,6 +82,7 @@
     currentChannel: null,
     currentProgram: null,
     hls: null,
+    mpegtsPlayer: null,
     // list view is the mobile-friendly default; grid stays default on wider
     // screens where 2D panning across the timeline is comfortable
     viewMode: window.innerWidth <= 860 ? 'list' : 'grid',
@@ -945,11 +946,16 @@
   }
 
   function stopPreview() {
+    if (state.mpegtsPlayer) {
+      state.mpegtsPlayer.destroy();
+      state.mpegtsPlayer = null;
+    }
     if (state.hls) {
       state.hls.destroy();
       state.hls = null;
     }
     els.previewVideo.onended = null;
+    els.previewVideo.onplaying = null;
     els.previewVideo.pause();
     els.previewVideo.removeAttribute('src');
     els.previewVideo.load();
@@ -957,15 +963,18 @@
     document.getElementById('fullscreenBtn').style.display = 'none';
   }
 
-  // Some XC panels serve "live" channels as a finite, VOD-tagged manifest
-  // (a fixed handful of segments, no sliding window) rather than a proper
-  // infinite live playlist - hls.js/the native player then correctly treats
-  // it as a clip with a fixed duration and just stops at the end, with no
-  // error at all. The recorder already works around the same quirk by
-  // re-resolving a brand new /api/stream/:id entry (a fresh token) on every
-  // attempt rather than trusting one token to stay "live" indefinitely - the
-  // preview needs the same reconnect-with-a-fresh-token strategy, since
-  // retrying the *same* manifest URL just re-fetches the same finite content.
+  // Preferred path: the raw continuous .ts stream (via mpegts.js) instead of
+  // chunked HLS. Some XC panels serve "live" channels as a finite,
+  // VOD-tagged .m3u8 manifest (a fixed handful of segments, no sliding
+  // window) rather than a proper infinite live playlist - hls.js/the native
+  // player then correctly treats it as a clip with a fixed duration and
+  // just stops at the end. Stripping those tags server-side (hlsProxy.js)
+  // helps, but some panels' HLS repackaging is just unreliable generally.
+  // The raw .ts endpoint has no manifest to go stale at all - it's one
+  // persistent connection, piped straight through by the proxy - so there's
+  // nothing to reconnect to in the common case. hls.js stays as a fallback
+  // for browsers without live MSE support for mpegts.js, and native HLS
+  // (Safari/iOS) below that.
   function startPreview() {
     if (!state.currentChannel) return;
     const channel = state.currentChannel;
@@ -984,13 +993,38 @@
       if (reconnectAttempts >= MAX_RECONNECTS) { giveUp(reason); return; }
       reconnectAttempts += 1;
       els.previewHint.textContent = 'Reconnecting...';
+      if (state.mpegtsPlayer) { state.mpegtsPlayer.destroy(); state.mpegtsPlayer = null; }
       if (state.hls) { state.hls.destroy(); state.hls = null; }
       connect();
     }
 
+    // fires whenever playback (re)starts producing frames, whichever tier
+    // below is active - a single, library-agnostic "we're good" signal
+    els.previewVideo.onplaying = () => {
+      reconnectAttempts = 0;
+      els.previewPanel.classList.add('playing');
+      document.getElementById('fullscreenBtn').style.display = 'flex';
+    };
+
     function connect() {
-      const src = `/api/stream/${encodeURIComponent(channel.id)}`;
       els.previewHint.textContent = 'Connecting...';
+
+      if (window.mpegts && window.mpegts.getFeatureList().mseLivePlayback) {
+        const src = `/api/stream/${encodeURIComponent(channel.id)}?format=ts`;
+        const player = window.mpegts.createPlayer(
+          { type: 'mpegts', isLive: true, url: src },
+          { enableStashBuffer: true, liveBufferLatencyChasing: true }
+        );
+        state.mpegtsPlayer = player;
+        player.on(window.mpegts.Events.ERROR, (type, detail) => reconnect(detail || type));
+        player.attachMediaElement(els.previewVideo);
+        player.load();
+        Promise.resolve(player.play()).catch(() => {});
+        els.previewVideo.onended = () => reconnect('ended');
+        return;
+      }
+
+      const src = `/api/stream/${encodeURIComponent(channel.id)}`;
 
       if (window.Hls && window.Hls.isSupported()) {
         const hls = new window.Hls({
@@ -1004,10 +1038,7 @@
         hls.loadSource(src);
         hls.attachMedia(els.previewVideo);
         hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-          reconnectAttempts = 0; // a healthy manifest load means the reconnect worked
           els.previewVideo.play().catch(() => {});
-          els.previewPanel.classList.add('playing');
-          document.getElementById('fullscreenBtn').style.display = 'flex';
         });
         hls.on(window.Hls.Events.FRAG_LOADED, () => { networkRetries = 0; mediaErrorRetries = 0; });
         hls.on(window.Hls.Events.ERROR, (evt, data) => {
@@ -1029,11 +1060,7 @@
         });
       } else if (els.previewVideo.canPlayType('application/vnd.apple.mpegurl')) {
         els.previewVideo.src = src;
-        els.previewVideo.play().then(() => {
-          reconnectAttempts = 0;
-          els.previewPanel.classList.add('playing');
-          document.getElementById('fullscreenBtn').style.display = 'flex';
-        }).catch(() => {});
+        els.previewVideo.play().catch(() => {});
       } else {
         els.previewHint.textContent = 'This browser cannot play HLS streams.';
         return;

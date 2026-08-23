@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { Readable } = require('stream');
 
 // Same UA used in xcClient.js - some panels block/serve differently based on
 // User-Agent for the actual stream endpoints too, not just player_api.php.
@@ -155,4 +156,46 @@ async function hlsProxyHandler(req, res) {
   }
 }
 
-module.exports = { makeToken, proxyPathFor, hlsProxyHandler };
+// A live channel's raw .ts stream (as opposed to its .m3u8/segment HLS
+// counterpart above) is a single, never-ending response - some XC panels'
+// HLS repackaging mistags its output as a finite/VOD manifest, causing
+// periodic reconnects in a chunked-HLS player, whereas the raw stream is
+// just one continuous connection with no manifest to go stale. Buffering
+// the whole response first (like hlsProxyHandler does, which is fine for a
+// bounded playlist or individual segment) would never complete for this -
+// so this handler pipes bytes straight through as they arrive instead.
+function tsProxyPathFor(url) {
+  const token = makeToken(url);
+  return `/api/live-ts/${token}`;
+}
+
+async function tsProxyHandler(req, res) {
+  const token = req.params.token || '';
+  if (!token) return res.status(400).send('missing token');
+  const url = resolveToken(token);
+  if (!url) return res.status(410).send('stream link expired, reselect the channel');
+
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
+
+  let upstream;
+  try {
+    upstream = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) return; // client already disconnected - nothing to report
+    return res.status(502).send('proxy error: ' + err.message);
+  }
+  if (!upstream.ok) {
+    const body = await upstream.text().catch(() => '');
+    return res.status(upstream.status).send(`upstream error (${upstream.status})${body ? ': ' + body.slice(0, 200) : ''}`);
+  }
+
+  res.setHeader('Content-Type', upstream.headers.get('content-type') || 'video/mp2t');
+  res.setHeader('Cache-Control', 'no-store');
+  Readable.fromWeb(upstream.body).pipe(res).on('error', () => {
+    // client disconnected mid-stream, or a similarly benign pipe failure -
+    // the connection is already on its way down, nothing more to do
+  });
+}
+
+module.exports = { makeToken, proxyPathFor, hlsProxyHandler, tsProxyPathFor, tsProxyHandler };

@@ -2,6 +2,7 @@ node_modules
 data/*.db
 data/*.db-*
 public/vendor/hls.min.js
+public/vendor/mpegts.js
 *.log
 recordings/*.ts
 .env

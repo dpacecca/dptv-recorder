@@ -268,11 +268,14 @@ router.delete('/recordings/:id', (req, res) => {
 });
 
 // ---------- streaming ----------
-// GET /api/stream/:channelId -> mints a fresh proxy token for this channel's
-// live .m3u8 and redirects the player there. Credentials never leave the server.
+// GET /api/stream/:channelId[?format=ts] -> mints a fresh proxy token for
+// this channel's live stream and redirects the player there. Credentials
+// never leave the server. format=ts gets the raw continuous stream instead
+// of the default chunked-HLS one - see streamEntry.js for why that matters.
 router.get('/stream/:channelId', (req, res) => {
   try {
-    const streamPath = buildStreamEntryPath(req.user.id, req.params.channelId);
+    const format = req.query.format === 'ts' ? 'ts' : 'm3u8';
+    const streamPath = buildStreamEntryPath(req.user.id, req.params.channelId, format);
     res.redirect(streamPath);
   } catch (err) {
     const status = err.message === 'channel not found' ? 404 : 400;
