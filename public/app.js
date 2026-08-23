@@ -949,6 +949,7 @@
       state.hls.destroy();
       state.hls = null;
     }
+    els.previewVideo.onended = null;
     els.previewVideo.pause();
     els.previewVideo.removeAttribute('src');
     els.previewVideo.load();
@@ -956,61 +957,95 @@
     document.getElementById('fullscreenBtn').style.display = 'none';
   }
 
+  // Some XC panels serve "live" channels as a finite, VOD-tagged manifest
+  // (a fixed handful of segments, no sliding window) rather than a proper
+  // infinite live playlist - hls.js/the native player then correctly treats
+  // it as a clip with a fixed duration and just stops at the end, with no
+  // error at all. The recorder already works around the same quirk by
+  // re-resolving a brand new /api/stream/:id entry (a fresh token) on every
+  // attempt rather than trusting one token to stay "live" indefinitely - the
+  // preview needs the same reconnect-with-a-fresh-token strategy, since
+  // retrying the *same* manifest URL just re-fetches the same finite content.
   function startPreview() {
     if (!state.currentChannel) return;
-    const src = `/api/stream/${encodeURIComponent(state.currentChannel.id)}`;
-    els.previewHint.textContent = 'Connecting...';
+    const channel = state.currentChannel;
     els.previewVideo.muted = false; // safe here - always triggered by a real user click/tap
 
-    if (window.Hls && window.Hls.isSupported()) {
-      const hls = new window.Hls({ 
-        maxBufferLength: 60,
-        maxMaxBufferLength: 120,
-        backBufferLength: 30
-      });
-      state.hls = hls;
-      let networkRetries = 0;
-      let recoveredMediaError = false;
-      hls.loadSource(src);
-      hls.attachMedia(els.previewVideo);
-      hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-        els.previewVideo.play().catch(() => {});
-        els.previewPanel.classList.add('playing');
-        document.getElementById('fullscreenBtn').style.display = 'flex';
-      });
-      // a healthy fragment load is a strong signal the connection has
-      // recovered - reset the retry budget so an occasional blip later in a
-      // long viewing session doesn't inherit an already-exhausted counter
-      hls.on(window.Hls.Events.FRAG_LOADED, () => { networkRetries = 0; recoveredMediaError = false; });
-      hls.on(window.Hls.Events.ERROR, (evt, data) => {
-        if (!data.fatal) return;
-        // most fatal errors here are a momentary blip in the proxy/upstream
-        // fetch (a dropped playlist or segment request) rather than the
-        // stream actually ending - hls.js's own recommended recovery is to
-        // just restart the load/media pipeline rather than give up outright
-        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 3) {
-          networkRetries += 1;
-          els.previewHint.textContent = 'Reconnecting...';
-          hls.startLoad();
-          return;
-        }
-        if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && !recoveredMediaError) {
-          recoveredMediaError = true;
-          hls.recoverMediaError();
-          return;
-        }
-        els.previewHint.textContent = 'Stream unavailable (' + data.details + ')';
-        els.previewPanel.classList.remove('playing');
-      });
-    } else if (els.previewVideo.canPlayType('application/vnd.apple.mpegurl')) {
-      els.previewVideo.src = src;
-      els.previewVideo.play().then(() => {
-        els.previewPanel.classList.add('playing');
-        document.getElementById('fullscreenBtn').style.display = 'flex';
-      }).catch(() => {});
-    } else {
-      els.previewHint.textContent = 'This browser cannot play HLS streams.';
+    let reconnectAttempts = 0;
+    const MAX_RECONNECTS = 5;
+
+    function giveUp(reason) {
+      els.previewHint.textContent = 'Stream unavailable (' + reason + ')';
+      els.previewPanel.classList.remove('playing');
     }
+
+    function reconnect(reason) {
+      if (state.currentChannel !== channel) return; // user moved on to a different channel
+      if (reconnectAttempts >= MAX_RECONNECTS) { giveUp(reason); return; }
+      reconnectAttempts += 1;
+      els.previewHint.textContent = 'Reconnecting...';
+      if (state.hls) { state.hls.destroy(); state.hls = null; }
+      connect();
+    }
+
+    function connect() {
+      const src = `/api/stream/${encodeURIComponent(channel.id)}`;
+      els.previewHint.textContent = 'Connecting...';
+
+      if (window.Hls && window.Hls.isSupported()) {
+        const hls = new window.Hls({
+          maxBufferLength: 60,
+          maxMaxBufferLength: 120,
+          backBufferLength: 30
+        });
+        state.hls = hls;
+        let networkRetries = 0;
+        let mediaErrorRetries = 0;
+        hls.loadSource(src);
+        hls.attachMedia(els.previewVideo);
+        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+          reconnectAttempts = 0; // a healthy manifest load means the reconnect worked
+          els.previewVideo.play().catch(() => {});
+          els.previewPanel.classList.add('playing');
+          document.getElementById('fullscreenBtn').style.display = 'flex';
+        });
+        hls.on(window.Hls.Events.FRAG_LOADED, () => { networkRetries = 0; mediaErrorRetries = 0; });
+        hls.on(window.Hls.Events.ERROR, (evt, data) => {
+          if (!data.fatal) return;
+          // a couple of in-place retries first, for a genuinely transient
+          // blip in the proxy/upstream fetch - hls.js's own recommended
+          // recovery for a fatal network error
+          if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 2) {
+            networkRetries += 1;
+            hls.startLoad();
+            return;
+          }
+          if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && mediaErrorRetries < 2) {
+            mediaErrorRetries += 1;
+            hls.recoverMediaError();
+            return;
+          }
+          reconnect(data.details);
+        });
+      } else if (els.previewVideo.canPlayType('application/vnd.apple.mpegurl')) {
+        els.previewVideo.src = src;
+        els.previewVideo.play().then(() => {
+          reconnectAttempts = 0;
+          els.previewPanel.classList.add('playing');
+          document.getElementById('fullscreenBtn').style.display = 'flex';
+        }).catch(() => {});
+      } else {
+        els.previewHint.textContent = 'This browser cannot play HLS streams.';
+        return;
+      }
+
+      // fires when playback reaches the end of whatever the manifest
+      // currently declares - for a channel that's supposed to be
+      // continuously live, that's the same finite-manifest quirk as above
+      els.previewVideo.onended = () => reconnect('ended');
+    }
+
+    connect();
   }
 
   document.getElementById('fullscreenBtn').addEventListener('click', (e) => {
