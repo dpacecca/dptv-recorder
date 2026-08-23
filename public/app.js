@@ -1254,6 +1254,29 @@
   }
   collapseBtn.addEventListener('click', () => setCategoriesCollapsed(true));
   expandBtn.addEventListener('click', () => setCategoriesCollapsed(false));
+
+  // On mobile the header is position:sticky and expand-btn is position:fixed
+  // (both needed so the page can scroll normally while still keeping them
+  // reachable - see the mobile media query) - but the header's actual
+  // height varies with content (its sync-bar wraps to 2 rows on a narrow
+  // phone, taller if a longer username is showing, etc.), so a fixed CSS
+  // offset for expand-btn would either overlap it or leave a gap. Position
+  // it dynamically just below the header's real rendered height instead.
+  const appHeaderEl = document.getElementById('appHeader');
+  function syncExpandBtnPosition() {
+    if (window.innerWidth <= 860) {
+      expandBtn.style.top = (appHeaderEl.getBoundingClientRect().height + 8) + 'px';
+    } else {
+      expandBtn.style.top = ''; // let the desktop CSS rule (top:12px) apply
+    }
+  }
+  if (window.ResizeObserver) {
+    new ResizeObserver(syncExpandBtnPosition).observe(appHeaderEl);
+  } else {
+    window.addEventListener('resize', syncExpandBtnPosition);
+  }
+  syncExpandBtnPosition();
+
   try {
     const saved = localStorage.getItem('dptv_categories_collapsed');
     if (saved === null) {

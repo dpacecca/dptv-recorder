@@ -543,6 +543,17 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   #syncBtn{ padding:8px 10px; font-size:11px; }
   #recordingsBtn, #settingsBtn, #userMenuBtn{ height:32px; }
 
+  /* On a phone the app-shell (fixed 100vh, each panel scrolling
+     independently within its own box) fights the one thing that actually
+     matters here: seeing as much of the guide as possible. Below the
+     breakpoint the whole page scrolls normally instead - header pinned via
+     position:sticky, everything else (synopsis/preview, controls, guide)
+     just flows and grows to full content height, so there's no artificial
+     ceiling on how much of the EPG is visible before you have to scroll. */
+  html, body{ height:auto; }
+  body{ overflow:visible; }
+  header{ position:sticky; top:0; z-index:50; }
+
   /* Categories become a full-screen overlay instead of a side column - the
      existing collapse/expand buttons and JS logic are unchanged, only how
      the collapsed/expanded state is expressed visually. */
@@ -555,12 +566,19 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
     box-shadow:8px 0 24px rgba(0,0,0,0.5);
   }
   .main.categories-collapsed .categories{ transform:translateX(-100%); }
-  /* bigger hit target and a visible border/shadow so it reads as a floating
-     control rather than blending into whatever text happens to sit behind
-     it - on a touchscreen a 34px button flush against body text is an easy
-     miss */
+  /* fixed rather than absolute-within-.main, and bigger with a visible
+     border/shadow so it reads as a floating control rather than blending
+     into whatever text happens to sit behind it - on a touchscreen a 34px
+     button flush against body text is an easy miss. Needs to stay reachable
+     while scrolled down into the guide now that the page actually scrolls,
+     which absolute-within-.main would not survive (it'd scroll away with
+     the content instead of the sticky header above it). */
   .expand-btn{
-    top:8px; width:40px; height:40px; border-color:var(--amber); color:var(--amber);
+    /* top is set dynamically in app.js (syncExpandBtnPosition) - the
+       header's real height varies with content, so a fixed offset here
+       would either overlap it or leave a gap */
+    position:fixed; left:8px; width:40px; height:40px;
+    border-color:var(--amber); color:var(--amber);
     box-shadow:0 2px 10px rgba(0,0,0,0.5);
   }
 
@@ -568,7 +586,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
      enough width to do both justice at once on a phone. Both are kept
      deliberately compact here: the guide underneath is the primary content
      on a phone and needs the vertical room, not this panel. */
-  .right{ grid-template-rows: auto 1fr; }
+  .right{ grid-template-rows: auto auto; }
   .detail-row{ grid-template-columns: 1fr; grid-template-rows: auto minmax(120px, 20vh); }
   .synopsis{
     border-right:none; border-bottom:1px solid var(--border); padding:10px 16px 10px 56px;
