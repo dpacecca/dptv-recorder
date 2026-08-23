@@ -75,6 +75,17 @@ function rewritePlaylist(body, baseUrl) {
     const trimmed = line.trim();
     if (!trimmed) return line;
 
+    // Every stream this proxy serves is a "live" channel - it should never
+    // actually end. Some XC panels mistakenly tag their live output as a
+    // finite/VOD playlist anyway (ENDLIST present, or PLAYLIST-TYPE:VOD),
+    // which makes hls.js/ffmpeg correctly treat it as a clip with a fixed
+    // duration and stop once they reach the end, instead of re-polling this
+    // same playlist for newly-available segments like a real live stream.
+    // Dropping those tags restores normal live behavior.
+    if (trimmed === '#EXT-X-ENDLIST' || trimmed.startsWith('#EXT-X-PLAYLIST-TYPE')) {
+      return null;
+    }
+
     if (trimmed.startsWith('#')) {
       // Tag lines can carry their own URI="..." attribute - e.g.
       // #EXT-X-KEY:METHOD=AES-128,URI="...",  #EXT-X-MAP:URI="init.mp4",
@@ -91,7 +102,7 @@ function rewritePlaylist(body, baseUrl) {
     const path = rewriteUri(trimmed, baseUrl, 'ts');
     return path || line;
   });
-  return out.join('\n');
+  return out.filter((line) => line !== null).join('\n');
 }
 
 // Express handler: GET /api/hls/:tokenExt where tokenExt is "<token>.<ext>"
