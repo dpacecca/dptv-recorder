@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('./auth');
 const oidc = require('./oidc');
+const cfAccess = require('./cloudflareAccess');
 const { getSystemSetting, setSystemSetting } = require('./db');
 
 const router = express.Router();
@@ -85,7 +86,14 @@ router.put('/profile', (req, res) => {
 
 // ---------------- OIDC (Authentik) ----------------
 router.get('/oidc/status', (req, res) => {
-  res.json({ configured: oidc.oidcConfigured() });
+  const configured = oidc.oidcConfigured();
+  const disablePasswordLogin = getSystemSetting('disable_password_login', '0') === '1';
+  res.json({
+    configured,
+    // only actually honor the "hide password login" preference if SSO is
+    // genuinely configured - never let a stale setting lock everyone out
+    passwordLoginDisabled: configured && disablePasswordLogin,
+  });
 });
 
 router.get('/oidc/login', async (req, res) => {
@@ -141,16 +149,35 @@ router.get('/admin/oidc-settings', auth.requireAuth, auth.requireAdmin, (req, re
     clientId: getSystemSetting('oidc_client_id', ''),
     hasClientSecret: !!getSystemSetting('oidc_client_secret', ''),
     redirectUri: getSystemSetting('oidc_redirect_uri', ''),
+    disablePasswordLogin: getSystemSetting('disable_password_login', '0') === '1',
   });
 });
 
 router.post('/admin/oidc-settings', auth.requireAuth, auth.requireAdmin, (req, res) => {
-  const { issuer, clientId, clientSecret, redirectUri } = req.body || {};
+  const { issuer, clientId, clientSecret, redirectUri, disablePasswordLogin } = req.body || {};
   if (issuer !== undefined) setSystemSetting('oidc_issuer', issuer);
   if (clientId !== undefined) setSystemSetting('oidc_client_id', clientId);
   if (clientSecret) setSystemSetting('oidc_client_secret', clientSecret); // blank = keep existing
   if (redirectUri !== undefined) setSystemSetting('oidc_redirect_uri', redirectUri);
+  if (disablePasswordLogin !== undefined) setSystemSetting('disable_password_login', disablePasswordLogin ? '1' : '0');
   oidc.resetClientCache();
+  res.json({ ok: true });
+});
+
+// ---------------- admin: Cloudflare Access ----------------
+router.get('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireAdmin, (req, res) => {
+  res.json({
+    teamDomain: getSystemSetting('cf_access_team_domain', ''),
+    aud: getSystemSetting('cf_access_aud', ''),
+    configured: cfAccess.cfAccessConfigured(),
+  });
+});
+
+router.post('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireAdmin, (req, res) => {
+  const { teamDomain, aud } = req.body || {};
+  if (teamDomain !== undefined) setSystemSetting('cf_access_team_domain', teamDomain);
+  if (aud !== undefined) setSystemSetting('cf_access_aud', aud);
+  cfAccess.resetCache();
   res.json({ ok: true });
 });
 

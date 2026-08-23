@@ -129,34 +129,13 @@ function remuxToMkv(row, tsPath) {
   });
 }
 
-function startRecording(row) {
-  if (activeProcs.has(row.id)) return;
+const MAX_RESUME_ATTEMPTS = 5;
+const EARLY_EXIT_THRESHOLD_MS = 20000; // exiting >20s before rec_end counts as "early" - a clean
+                                        // finish via -t naturally lands within a couple seconds of it
+const RESUME_BACKOFF_MS = 4000;
 
-  const format = recordFormat(row.user_id);
-  // "mkv_post" records as .ts throughout (so it stays watchable while still
-  // recording, unlike a growing/unfinalized .mkv), then gets remuxed to a
-  // proper finished .mkv once the recording completes.
-  const recordAsTs = format === 'ts' || format === 'mkv_post';
-  const ext = recordAsTs ? 'ts' : 'mkv';
-  const muxer = recordAsTs ? 'mpegts' : 'matroska';
-  const filename = buildFilename(row, ext);
-  const outputPath = path.join(userRecordingsDir(row.user_id), filename);
-  const durationSec = Math.max(1, Math.round((row.rec_end - Date.now()) / 1000));
-
-  let streamPath;
-  try {
-    streamPath = buildStreamEntryPath(row.user_id, row.channel_id);
-  } catch (err) {
-    console.error(`[recorder] #${row.id} could not resolve stream: ${err.message}`);
-    db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run(err.message, row.id);
-    notifier.notifyRecordingFailed(row.user_id, row.program_title, err.message);
-    return;
-  }
-  const streamUrl = `http://127.0.0.1:${PORT}${streamPath}`;
-
-  console.log(`[recorder] starting recording #${row.id} (user ${row.user_id}) "${row.program_title}" -> ${outputPath} (${durationSec}s, ${muxer})`);
-
-  const args = [
+function buildFfmpegArgs(streamUrl, outputPath, durationSec, muxer) {
+  return [
     '-y',
     // tolerate brief network drop-outs/buffering instead of failing outright -
     // reconnect automatically rather than treating a momentary hiccup as fatal
@@ -181,71 +160,174 @@ function startRecording(row) {
     '-t', String(durationSec),
     outputPath,
   ];
+}
 
-  let proc;
-  try {
-    proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
-  } catch (err) {
-    console.error(`[recorder] #${row.id} failed to spawn ffmpeg:`, err.message);
-    db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run('Could not start ffmpeg: ' + err.message, row.id);
-    notifier.notifyRecordingFailed(row.user_id, row.program_title, 'Could not start ffmpeg: ' + err.message);
-    return;
-  }
-
-  let stderrTail = '';
-  proc.stderr.on('data', (chunk) => {
-    stderrTail = (stderrTail + chunk.toString()).slice(-4000);
+// Spawns one ffmpeg run and resolves when it exits - never rejects, so the
+// orchestrator below can treat every outcome (clean exit, crash, spawn
+// failure) uniformly.
+function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer) {
+  return new Promise((resolve) => {
+    let proc;
+    try {
+      proc = spawn('ffmpeg', buildFfmpegArgs(streamUrl, outputPath, durationSec, muxer), {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+    } catch (err) {
+      resolve({ code: -1, stderrTail: 'Could not start ffmpeg: ' + err.message });
+      return;
+    }
+    activeProcs.set(row.id, { proc });
+    let stderrTail = '';
+    proc.stderr.on('data', (chunk) => { stderrTail = (stderrTail + chunk.toString()).slice(-4000); });
+    proc.on('close', (code) => {
+      activeProcs.delete(row.id);
+      resolve({ code, stderrTail });
+    });
+    proc.on('error', (err) => {
+      activeProcs.delete(row.id);
+      resolve({ code: -1, stderrTail: 'ffmpeg error: ' + err.message });
+    });
   });
+}
+
+// Appends one file onto another via streams (not readFileSync/appendFileSync -
+// these can run for hours and produce multi-GB files, so this needs to be
+// memory-safe) and removes the source afterward. Valid for raw MPEG-TS,
+// which - unlike Matroska - can be safely concatenated at the byte level.
+function appendFile(mainPath, partPath) {
+  return new Promise((resolve, reject) => {
+    const readStream = fs.createReadStream(partPath);
+    const writeStream = fs.createWriteStream(mainPath, { flags: 'a' });
+    readStream.on('error', reject);
+    writeStream.on('error', reject);
+    writeStream.on('finish', () => {
+      fs.unlink(partPath, () => {});
+      resolve();
+    });
+    readStream.pipe(writeStream);
+  });
+}
+
+async function startRecording(row) {
+  if (activeProcs.has(row.id)) return;
+
+  const format = recordFormat(row.user_id);
+  // "mkv_post" records as .ts throughout (so it stays watchable while still
+  // recording, unlike a growing/unfinalized .mkv), then gets remuxed to a
+  // proper finished .mkv once the recording completes. Raw .ts is also what
+  // makes auto-resume-on-failure possible below - MPEG-TS can be safely
+  // concatenated at the byte level; Matroska cannot, so live "mkv" format
+  // doesn't get the resume benefit.
+  const recordAsTs = format === 'ts' || format === 'mkv_post';
+  const ext = recordAsTs ? 'ts' : 'mkv';
+  const muxer = recordAsTs ? 'mpegts' : 'matroska';
+  const filename = buildFilename(row, ext);
+  const outputPath = path.join(userRecordingsDir(row.user_id), filename);
 
   db.prepare(`UPDATE recordings SET status='recording', filename=? WHERE id=?`).run(filename, row.id);
-  activeProcs.set(row.id, { proc });
   notifier.notifyRecordingStarted(row.user_id, row.program_title);
 
-  proc.on('close', (code) => {
-    activeProcs.delete(row.id);
-    const current = rowById(row.id);
-    if (!current || current.status === 'cancelled') return; // cancelRecording already handled cleanup
+  let attempt = 0;
+  let lastResult = null;
+  let resumed = false;
 
-    const size = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : -1;
-    const tail = stderrTail.split('\n').filter(Boolean).slice(-8).join(' | ').trim();
-    const diskFull = /no space left on device|ENOSPC/i.test(stderrTail);
-    const MIN_USABLE_BYTES = 200 * 1024; // ~200KB - enough to exclude an immediate-failure stub,
-                                          // small enough to still catch "recorded fine, hiccuped at the end"
+  while (true) {
+    const durationSec = Math.max(1, Math.round((row.rec_end - Date.now()) / 1000));
 
-    if (code === 0) {
-      console.log(`[recorder] #${row.id} completed -> ${outputPath} (${size >= 0 ? size + ' bytes' : 'FILE NOT FOUND ON DISK'})`);
-      if (size <= 0) {
-        console.warn(`[recorder] #${row.id} ffmpeg exited 0 but the output file is missing or empty - check that RECORDINGS_PATH ("${BASE_RECORDINGS_DIR}") is actually writable and correctly volume-mounted.`);
-      }
-      db.prepare(`UPDATE recordings SET status='completed' WHERE id=?`).run(row.id);
-      notifier.notifyRecordingCompleted(row.user_id, row.program_title);
-      if (format === 'mkv_post' && size > 0) remuxToMkv(row, outputPath);
-    } else if (!diskFull && size >= MIN_USABLE_BYTES) {
-      // ffmpeg reported an error - often at finalization (writing the
-      // trailer/seek index) - but a substantial amount of real video was
-      // already written to disk. Treat this as completed-with-a-warning
-      // rather than losing the recording outright; it's very likely still
-      // playable, just possibly missing a proper seek index.
-      const warnMsg = `Finished with a warning (ffmpeg exit code ${code}) after writing ${(size / 1024 / 1024).toFixed(1)}MB - the file is likely still playable, possibly with degraded seeking. ${tail}`;
-      console.warn(`[recorder] #${row.id} finished with warnings (code ${code}) but kept a ${size}-byte file -> ${outputPath}`);
-      db.prepare(`UPDATE recordings SET status='completed', error=? WHERE id=?`).run(warnMsg, row.id);
-      notifier.notifyRecordingCompleted(row.user_id, row.program_title);
-      if (format === 'mkv_post') remuxToMkv(row, outputPath);
-    } else {
-      const errMsg = diskFull
-        ? `Recording failed: the recordings disk is full (no space left on device). Free up space on the RECORDINGS_PATH volume and try again.`
-        : `ffmpeg exited with code ${code}: ${tail}`;
-      console.error(`[recorder] #${row.id} failed (code ${code}, ${size} bytes written)`);
-      db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run(errMsg, row.id);
-      notifier.notifyRecordingFailed(row.user_id, row.program_title, errMsg);
+    let streamPath;
+    try {
+      streamPath = buildStreamEntryPath(row.user_id, row.channel_id); // re-resolved fresh every attempt
+    } catch (err) {
+      lastResult = { code: -1, stderrTail: err.message };
+      break;
     }
-  });
+    const streamUrl = `http://127.0.0.1:${PORT}${streamPath}`;
+    const segmentPath = attempt === 0 ? outputPath : `${outputPath}.resume${attempt}.part`;
 
-  proc.on('error', (err) => {
-    activeProcs.delete(row.id);
-    db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run('ffmpeg error: ' + err.message, row.id);
-    notifier.notifyRecordingFailed(row.user_id, row.program_title, 'ffmpeg error: ' + err.message);
-  });
+    console.log(`[recorder] #${row.id} (attempt ${attempt + 1}) recording "${row.program_title}" -> ${segmentPath} (${durationSec}s, ${muxer})`);
+    const result = await runFfmpegSegment(row, streamUrl, segmentPath, durationSec, muxer);
+    lastResult = result;
+
+    // cancelRecording() already handled cleanup of the main output file if
+    // this happened mid-attempt - but a resume attempt writes to a separate
+    // temp segment file that wouldn't be touched by that, so clean it up here
+    const current = rowById(row.id);
+    if (!current || current.status === 'cancelled') {
+      if (attempt > 0 && segmentPath !== outputPath) fs.unlink(segmentPath, () => {});
+      return;
+    }
+
+    if (attempt > 0) {
+      // fold this attempt's output back onto the main file (whatever the
+      // outcome - even a failed/short attempt may have captured something)
+      const segSize = fs.existsSync(segmentPath) ? fs.statSync(segmentPath).size : 0;
+      if (segSize > 0) {
+        try {
+          await appendFile(outputPath, segmentPath);
+          resumed = true;
+        } catch (err) {
+          console.warn(`[recorder] #${row.id} could not append resumed segment: ${err.message}`);
+          fs.unlink(segmentPath, () => {});
+        }
+      } else {
+        fs.unlink(segmentPath, () => {});
+      }
+    }
+
+    const msRemaining = row.rec_end - Date.now();
+    const exitedEarly = msRemaining > EARLY_EXIT_THRESHOLD_MS;
+
+    if (!exitedEarly) break; // reached (or nearly reached) the scheduled end - done, one way or another
+    if (!recordAsTs) break;  // live "mkv" can't be safely resumed by appending - stop here
+    if (attempt >= MAX_RESUME_ATTEMPTS) {
+      console.warn(`[recorder] #${row.id} gave up after ${MAX_RESUME_ATTEMPTS} resume attempts, ${Math.round(msRemaining / 60000)}m short of the scheduled end`);
+      break;
+    }
+
+    console.warn(`[recorder] #${row.id} ffmpeg exited early (code ${result.code}, ${Math.round(msRemaining / 60000)}m remaining) - reconnecting (attempt ${attempt + 2}/${MAX_RESUME_ATTEMPTS + 1})`);
+    attempt++;
+    await new Promise((r) => setTimeout(r, RESUME_BACKOFF_MS));
+  }
+
+  finalizeRecording(row, format, outputPath, lastResult, resumed);
+}
+
+function finalizeRecording(row, format, outputPath, result, resumed) {
+  const { code, stderrTail } = result;
+  const size = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : -1;
+  const tail = (stderrTail || '').split('\n').filter(Boolean).slice(-8).join(' | ').trim();
+  const diskFull = /no space left on device|ENOSPC/i.test(stderrTail || '');
+  const MIN_USABLE_BYTES = 200 * 1024; // ~200KB - enough to exclude an immediate-failure stub,
+                                        // small enough to still catch "recorded fine, hiccuped at the end"
+  const resumeNote = resumed ? ' (recovered via auto-reconnect after an earlier drop - there may be a brief gap where it reconnected)' : '';
+
+  if (code === 0) {
+    console.log(`[recorder] #${row.id} completed -> ${outputPath} (${size >= 0 ? size + ' bytes' : 'FILE NOT FOUND ON DISK'})${resumeNote}`);
+    if (size <= 0) {
+      console.warn(`[recorder] #${row.id} ffmpeg exited 0 but the output file is missing or empty - check that RECORDINGS_PATH ("${BASE_RECORDINGS_DIR}") is actually writable and correctly volume-mounted.`);
+    }
+    db.prepare(`UPDATE recordings SET status='completed', error=? WHERE id=?`).run(resumed ? `Completed${resumeNote}.` : null, row.id);
+    notifier.notifyRecordingCompleted(row.user_id, row.program_title);
+    if (format === 'mkv_post' && size > 0) remuxToMkv(row, outputPath);
+  } else if (!diskFull && size >= MIN_USABLE_BYTES) {
+    // ffmpeg reported an error - often at finalization (writing the
+    // trailer/seek index) - but a substantial amount of real video was
+    // already written to disk. Treat this as completed-with-a-warning
+    // rather than losing the recording outright; it's very likely still
+    // playable, just possibly missing a proper seek index.
+    const warnMsg = `Finished with a warning (ffmpeg exit code ${code}) after writing ${(size / 1024 / 1024).toFixed(1)}MB${resumeNote} - the file is likely still playable, possibly with degraded seeking. ${tail}`;
+    console.warn(`[recorder] #${row.id} finished with warnings (code ${code}) but kept a ${size}-byte file -> ${outputPath}${resumeNote}`);
+    db.prepare(`UPDATE recordings SET status='completed', error=? WHERE id=?`).run(warnMsg, row.id);
+    notifier.notifyRecordingCompleted(row.user_id, row.program_title);
+    if (format === 'mkv_post') remuxToMkv(row, outputPath);
+  } else {
+    const errMsg = diskFull
+      ? `Recording failed: the recordings disk is full (no space left on device). Free up space on the RECORDINGS_PATH volume and try again.`
+      : `ffmpeg exited with code ${code}${resumeNote}: ${tail}`;
+    console.error(`[recorder] #${row.id} failed (code ${code}, ${size} bytes written)${resumeNote}`);
+    db.prepare(`UPDATE recordings SET status='failed', error=? WHERE id=?`).run(errMsg, row.id);
+    notifier.notifyRecordingFailed(row.user_id, row.program_title, errMsg);
+  }
 }
 
 function cancelRecording(userId, id) {

@@ -235,6 +235,14 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   color:#1a1305; z-index:3; text-transform:uppercase; letter-spacing:1.5px;
   background:var(--amber); padding:5px 12px;
 }
+.fullscreen-btn{
+  position:absolute; top:10px; right:10px; z-index:4;
+  width:34px; height:34px; border-radius:6px; border:1px solid var(--border);
+  background:rgba(11,13,18,0.75); color:var(--text); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+.fullscreen-btn svg{ width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2; }
+.fullscreen-btn:hover{ border-color:var(--amber); color:var(--amber); }
 
 /* ---- EPG ---- */
 .epg-panel{ display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--bg); }
@@ -472,3 +480,68 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   border-radius:6px; height:34px; padding:0 12px; font-size:12px; cursor:pointer;
 }
 #userMenuBtn:hover{ color:var(--text); border-color:var(--amber); }
+
+/* ---------- MOBILE / NARROW VIEWPORTS ---------- */
+@media (max-width: 860px) {
+  body{ font-size:13px; }
+
+  header{
+    flex-wrap:wrap; height:auto; min-height:56px; padding:8px 12px; gap:8px;
+  }
+  .brand h1{ font-size:18px; }
+  .sync-bar{ flex-wrap:wrap; gap:8px; width:100%; }
+  .sync-status{ display:none; } /* not essential on a small screen, saves space */
+  #versionBadge{ display:none; }
+  #autoSync{ font-size:11px; padding:6px 8px; }
+  #syncBtn{ padding:8px 10px; font-size:11px; }
+  #recordingsBtn, #settingsBtn, #userMenuBtn{ height:32px; }
+
+  /* Categories become a full-screen overlay instead of a side column - the
+     existing collapse/expand buttons and JS logic are unchanged, only how
+     the collapsed/expanded state is expressed visually. */
+  .main{ grid-template-columns: 1fr; }
+  .main.categories-collapsed{ grid-template-columns: 1fr; }
+  .categories{
+    position:fixed; top:0; left:0; bottom:0; z-index:60;
+    width:85vw; max-width:340px; height:100vh;
+    transform:translateX(0); transition:transform 0.25s ease;
+    box-shadow:8px 0 24px rgba(0,0,0,0.5);
+  }
+  .main.categories-collapsed .categories{ transform:translateX(-100%); }
+  .expand-btn{ top:8px; }
+
+  /* synopsis + preview stack instead of sitting side by side - there's not
+     enough width to do both justice at once on a phone */
+  .right{ grid-template-rows: auto 1fr; }
+  .detail-row{ grid-template-columns: 1fr; grid-template-rows: auto minmax(180px, 32vh); }
+  .synopsis{ border-right:none; border-bottom:1px solid var(--border); padding:14px 16px; max-height:26vh; }
+  .synopsis .prog-title{ font-size:18px; }
+  .synopsis .prog-desc{ font-size:12.5px; -webkit-line-clamp:3; }
+  .preview{ min-height:180px; }
+
+  /* narrower channel column frees up more room for the actual timeline */
+  .epg-corner, .epg-channel{ width:120px; min-width:120px; }
+  .epg-channel .cname{ font-size:11px; }
+  .epg-channel .logo{ width:26px; height:26px; }
+
+  .modal{ width:92vw; padding:18px; }
+  .modal.modal-wide{ width:92vw; }
+  .modal-tabs{ gap:2px; }
+  .modal-tab{ font-size:10.5px; margin-right:8px; padding:6px 2px 8px; }
+
+  .auth-card{ width:88vw; padding:24px; }
+
+  .admin-user-add{ grid-template-columns:1fr 1fr; }
+
+  .day-chips{ gap:4px; }
+  .day-chip{ padding:6px 8px; font-size:10px; }
+}
+
+@media (max-width: 480px) {
+  .synopsis .prog-title{ font-size:16px; }
+  .record-btn{ font-size:11px; padding:8px 12px; }
+  .epg-controls{ flex-wrap:wrap; gap:8px; }
+  .epg-controls .search-wrap{ max-width:none; flex-basis:100%; order:1; }
+  .day-chips{ order:2; }
+  .jump-now{ order:3; }
+}

@@ -14,11 +14,14 @@
 <div class="auth-screen" id="loginScreen" style="display:none">
   <div class="auth-card">
     <h1>DPTV<span>Recorder</span></h1>
-    <label>Username<br><input type="text" id="loginUsername" autocomplete="username"></label>
-    <label>Password<br><input type="password" id="loginPassword" autocomplete="current-password"></label>
-    <div class="modal-error" id="loginError"></div>
-    <button id="loginSubmit" class="btn-primary">Sign in</button>
+    <div id="localLoginFields">
+      <label>Username<br><input type="text" id="loginUsername" autocomplete="username"></label>
+      <label>Password<br><input type="password" id="loginPassword" autocomplete="current-password"></label>
+      <div class="modal-error" id="loginError"></div>
+      <button id="loginSubmit" class="btn-primary">Sign in</button>
+    </div>
     <button id="oidcLoginBtn" class="btn-secondary" style="display:none">Sign in with Authentik</button>
+    <button id="useLocalLoginBtn" class="btn-secondary" style="display:none">Use username/password instead</button>
   </div>
 </div>
 
@@ -92,6 +95,9 @@
       <div class="preview" id="previewPanel">
         <div class="backdrop"></div>
         <div class="no-video">Video Preview</div>
+        <button id="fullscreenBtn" class="fullscreen-btn" title="Full screen" style="display:none">
+          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
         <div class="chan-logo-big" id="previewLogo">
           <svg viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>
         </div>
@@ -256,10 +262,23 @@
       <label>Client secret<br><input type="password" id="oidcClientSecret" placeholder="(leave blank to keep the current secret)"></label>
       <label>Redirect URI<br><input type="text" id="oidcRedirectUri" placeholder="https://your-dptv-host/api/auth/oidc/callback"></label>
       <div class="modal-hint">Register this exact redirect URI in Authentik's application config. Requested scopes: <code>openid profile email</code>.</div>
+      <label class="rec-select-all"><input type="checkbox" id="oidcDisablePassword"> Hide username/password login (SSO only) - only takes effect while OIDC is actually configured, so a broken SSO setup can never lock everyone out</label>
       <div class="modal-error" id="oidcError"></div>
       <div class="modal-actions">
         <button id="adminCancel" class="btn-secondary">Cancel</button>
         <button id="oidcSave" class="btn-primary">Save OIDC settings</button>
+      </div>
+
+      <div class="modal-hint" style="margin-top:14px"><strong>Cloudflare Access</strong></div>
+      <div class="modal-hint">If Cloudflare Access already authenticates users before requests reach this app
+        (e.g. using Authentik as the Access identity provider), configure this to skip DPTV Recorder's own
+        login screen entirely - the verified Cloudflare identity signs you in automatically.</div>
+      <label>Team domain<br><input type="text" id="cfTeamDomain" placeholder="yourteam.cloudflareaccess.com"></label>
+      <label>Application AUD tag<br><input type="text" id="cfAud" placeholder="from the Access application's Overview page"></label>
+      <div class="modal-error" id="cfError"></div>
+      <div class="modal-actions">
+        <button id="cfCancel" class="btn-secondary">Cancel</button>
+        <button id="cfSave" class="btn-primary">Save Cloudflare Access settings</button>
       </div>
 
       <div class="modal-hint" style="margin-top:10px"><strong>Users</strong></div>

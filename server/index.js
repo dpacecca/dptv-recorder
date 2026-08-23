@@ -10,9 +10,9 @@ const authRoutes = require('./authRoutes');
 const { hlsProxyHandler } = require('./hlsProxy');
 const { initScheduler } = require('./sync');
 const recorder = require('./recorder');
-const { bootstrapDefaultAdmin } = require('./auth');
+const { bootstrapDefaultAdmin, createSession, setSessionCookie, SESSION_COOKIE } = require('./auth');
+const cfAccess = require('./cloudflareAccess');
 const pkg = require('../package.json');
-const { cloudflareAccessMiddleware } = require('./cloudflareAccess');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,7 +27,30 @@ app.set('trust proxy', 1);
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(cloudflareAccessMiddleware);
+
+// Cloudflare Access auto-login: if the request already carries a Cloudflare
+// Access identity (i.e. Cloudflare itself gated access before this request
+// ever arrived, e.g. via Authentik as the Access IdP) and there's no DPTV
+// session yet, silently verify it and establish one - the login screen is
+// simply never reached. Fails open (falls through to normal login) on any
+// missing config/invalid token, never blocks a request.
+app.use(async (req, res, next) => {
+  try {
+    if (req.cookies && req.cookies[SESSION_COOKIE]) return next(); // already signed in
+    if (!cfAccess.cfAccessConfigured()) return next();
+    const token = req.header('Cf-Access-Jwt-Assertion');
+    if (!token) return next();
+
+    const claims = await cfAccess.verifyToken(token);
+    const user = cfAccess.findOrCreateUserFromCfAccessClaims(claims);
+    const sessionToken = createSession(user.id);
+    setSessionCookie(res, sessionToken);
+    req.cookies[SESSION_COOKIE] = sessionToken;
+  } catch (err) {
+    console.warn('[cf-access] auto-login skipped:', err.message);
+  }
+  next();
+});
 
 app.get('/api/version', (req, res) => {
   res.json({ version: pkg.version, buildTime: BUILD_TIME, node: process.version });

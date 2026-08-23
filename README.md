@@ -262,3 +262,72 @@ missing from the provider's response are removed - all logged with explicit
 empty categories or channels list (a transient glitch, not an actual empty
 lineup), existing data is left alone rather than being wiped - a real
 provider outage shouldn't delete your whole channel list.
+
+## Cloudflare Access (SSO passthrough, skip the login page entirely)
+
+If Cloudflare Access already gates requests before they reach this app
+(e.g. using Authentik as the Access identity provider), configure this
+under Settings → Admin → Cloudflare Access:
+
+- **Team domain** - e.g. `yourteam.cloudflareaccess.com`
+- **Application AUD tag** - found on the Access application's Overview page
+  in the Cloudflare dashboard
+
+Once configured, any request that already carries a valid
+`Cf-Access-Jwt-Assertion` header is verified against Cloudflare's public
+keys and silently signed in - matched to an existing account by email, or a
+new one created automatically from the identity Cloudflare provides. The
+login screen is never shown at all in this case. This fails open on any
+missing config or invalid token (falls through to the normal login flow),
+so it can never accidentally lock anyone out.
+
+## Disabling password login (SSO-only)
+
+Once OIDC is configured (Settings → Admin), you can check "Hide
+username/password login" to show only the SSO button on the login screen.
+This only actually takes effect while OIDC is genuinely configured - if SSO
+breaks or gets unconfigured later, the password fields automatically become
+available again rather than locking everyone out. There's also always a
+"Use username/password instead" link on the login screen as a manual
+fallback, even while this is enabled.
+
+## Mobile
+
+The app is responsive down to phone-sized screens: the categories panel
+becomes a full-screen overlay (auto-collapses after picking a category),
+synopsis and video preview stack vertically instead of side-by-side, and
+the header/controls reflow to fit. The video preview also has a full-screen
+button (bottom right of the preview panel once playing) for proper live
+viewing, including on mobile - audio is unmuted automatically once you
+start playback, since that's always triggered by an explicit tap/click.
+
+## Recording resilience
+
+If ffmpeg exits well before a recording's scheduled end (network blip,
+provider hiccup, etc.) - as opposed to reaching the end cleanly or being
+cancelled - the recorder automatically reconnects and continues into the
+same file, up to 5 attempts, backing off a few seconds between each. This
+only applies to `.ts`-based formats (`ts` and `mkv_post`, since raw MPEG-TS
+can be safely concatenated at the byte level); live `.mkv` format can't be
+resumed this way and will just stop at whatever point it failed - another
+reason `mkv_post` is the recommended format over live `mkv`.
+
+A resumed recording will show "Completed (recovered via auto-reconnect...)"
+in the Recordings list. Worth knowing: each reconnect restarts the
+underlying stream's internal timestamps, so tools like `ffprobe` may only
+report the first segment's duration in file metadata even though the full
+content is present (check file size, not just the reported duration) - and
+there may be a brief hiccup in playback right at the reconnect point. This
+is a fundamental tradeoff of stream-copy concatenation, not a bug, and is
+far preferable to losing everything past the first failure.
+
+If a recording still comes up short: check its entry in the Recordings list
+first. **"Completed" with no error** means ffmpeg finished exactly on
+schedule - if the actual broadcast ran longer than that, the EPG data for
+that program was simply wrong (a provider data-accuracy issue, not
+something this app can fix). **"Failed"** with an ffmpeg error, or a
+"recovered via auto-reconnect" note appearing on something that should have
+run the *full* duration, points to an actual connection issue - check
+`docker logs` around that time, and consider whether your provider limits
+concurrent connections (recording + a live preview open at the same time
+can trip this).

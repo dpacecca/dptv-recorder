@@ -474,6 +474,10 @@
     state.activeCategoryId = id;
     renderCategories(els.catFilter.value);
     await loadEpg(id);
+    // on mobile the categories panel is a full-screen overlay, not a side
+    // column - close it automatically once a choice is made so the guide
+    // that was just loaded is actually visible
+    if (window.innerWidth <= 860) setCategoriesCollapsed(true);
   }
 
   // ---------------- timescale (built once, spans DAY_COUNT days) ----------------
@@ -822,12 +826,14 @@
     els.previewVideo.removeAttribute('src');
     els.previewVideo.load();
     els.previewPanel.classList.remove('playing');
+    document.getElementById('fullscreenBtn').style.display = 'none';
   }
 
   function startPreview() {
     if (!state.currentChannel) return;
     const src = `/api/stream/${encodeURIComponent(state.currentChannel.id)}`;
     els.previewHint.textContent = 'Connecting...';
+    els.previewVideo.muted = false; // safe here - always triggered by a real user click/tap
 
     if (window.Hls && window.Hls.isSupported()) {
       const hls = new window.Hls({ maxBufferLength: 15 });
@@ -837,6 +843,7 @@
       hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
         els.previewVideo.play().catch(() => {});
         els.previewPanel.classList.add('playing');
+        document.getElementById('fullscreenBtn').style.display = 'flex';
       });
       hls.on(window.Hls.Events.ERROR, (evt, data) => {
         if (data.fatal) {
@@ -846,11 +853,23 @@
       });
     } else if (els.previewVideo.canPlayType('application/vnd.apple.mpegurl')) {
       els.previewVideo.src = src;
-      els.previewVideo.play().then(() => els.previewPanel.classList.add('playing')).catch(() => {});
+      els.previewVideo.play().then(() => {
+        els.previewPanel.classList.add('playing');
+        document.getElementById('fullscreenBtn').style.display = 'flex';
+      }).catch(() => {});
     } else {
       els.previewHint.textContent = 'This browser cannot play HLS streams.';
     }
   }
+
+  document.getElementById('fullscreenBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // don't also trigger the panel's own play/pause click handler
+    if (els.previewVideo.requestFullscreen) {
+      els.previewVideo.requestFullscreen();
+    } else if (els.previewVideo.webkitEnterFullscreen) {
+      els.previewVideo.webkitEnterFullscreen(); // iOS Safari
+    }
+  });
 
   els.previewPanel.addEventListener('click', () => {
     if (els.previewPanel.classList.contains('playing')) {
@@ -979,7 +998,14 @@
   collapseBtn.addEventListener('click', () => setCategoriesCollapsed(true));
   expandBtn.addEventListener('click', () => setCategoriesCollapsed(false));
   try {
-    setCategoriesCollapsed(localStorage.getItem('dptv_categories_collapsed') === '1');
+    const saved = localStorage.getItem('dptv_categories_collapsed');
+    if (saved === null) {
+      // no explicit preference yet - default collapsed on mobile (it's a
+      // full-screen overlay there), expanded on desktop (a side column)
+      setCategoriesCollapsed(window.innerWidth <= 860);
+    } else {
+      setCategoriesCollapsed(saved === '1');
+    }
   } catch {
     setCategoriesCollapsed(false);
   }
@@ -1024,13 +1050,23 @@
     hideAllScreens();
     screens.login.style.display = 'flex';
     document.getElementById('loginError').textContent = '';
+    document.getElementById('localLoginFields').style.display = 'block';
+    document.getElementById('useLocalLoginBtn').style.display = 'none';
     try {
       const status = await (await fetch('/api/auth/oidc/status')).json();
       document.getElementById('oidcLoginBtn').style.display = status.configured ? 'block' : 'none';
+      if (status.passwordLoginDisabled) {
+        document.getElementById('localLoginFields').style.display = 'none';
+        document.getElementById('useLocalLoginBtn').style.display = 'block';
+      }
     } catch {
       document.getElementById('oidcLoginBtn').style.display = 'none';
     }
   }
+  document.getElementById('useLocalLoginBtn').addEventListener('click', () => {
+    document.getElementById('localLoginFields').style.display = 'block';
+    document.getElementById('useLocalLoginBtn').style.display = 'none';
+  });
 
   function showForceChangeScreen(user) {
     hideAllScreens();
@@ -1178,6 +1214,12 @@
       document.getElementById('oidcClientSecret').value = '';
       document.getElementById('oidcClientSecret').placeholder = oidcSettings.hasClientSecret ? '(leave blank to keep the current secret)' : 'client secret';
       document.getElementById('oidcRedirectUri').value = oidcSettings.redirectUri || '';
+      document.getElementById('oidcDisablePassword').checked = !!oidcSettings.disablePasswordLogin;
+
+      const cfSettings = await api('/auth/admin/cloudflare-access-settings');
+      document.getElementById('cfTeamDomain').value = cfSettings.teamDomain || '';
+      document.getElementById('cfAud').value = cfSettings.aud || '';
+
       await loadAdminUsers();
     } catch (err) {
       document.getElementById('oidcError').textContent = err.message;
@@ -1221,6 +1263,7 @@
           clientId: document.getElementById('oidcClientId').value.trim(),
           clientSecret: document.getElementById('oidcClientSecret').value,
           redirectUri: document.getElementById('oidcRedirectUri').value.trim(),
+          disablePasswordLogin: document.getElementById('oidcDisablePassword').checked,
         }),
       });
       errEl.style.color = 'var(--teal)';
@@ -1230,6 +1273,27 @@
       errEl.textContent = err.message;
     }
   });
+
+  document.getElementById('cfSave').addEventListener('click', async () => {
+    const errEl = document.getElementById('cfError');
+    errEl.textContent = '';
+    try {
+      await api('/auth/admin/cloudflare-access-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamDomain: document.getElementById('cfTeamDomain').value.trim(),
+          aud: document.getElementById('cfAud').value.trim(),
+        }),
+      });
+      errEl.style.color = 'var(--teal)';
+      errEl.textContent = 'Saved.';
+    } catch (err) {
+      errEl.style.color = '';
+      errEl.textContent = err.message;
+    }
+  });
+  document.getElementById('cfCancel').addEventListener('click', closeSettingsModal);
 
   document.getElementById('newUserAdd').addEventListener('click', async () => {
     const errEl = document.getElementById('adminUsersError');
