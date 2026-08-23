@@ -836,7 +836,11 @@
     els.previewVideo.muted = false; // safe here - always triggered by a real user click/tap
 
     if (window.Hls && window.Hls.isSupported()) {
-      const hls = new window.Hls({ maxBufferLength: 15 });
+      const hls = new window.Hls({ 
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        backBufferLength: 30
+      });
       state.hls = hls;
       hls.loadSource(src);
       hls.attachMedia(els.previewVideo);
@@ -871,11 +875,16 @@
     }
   });
 
-  els.previewPanel.addEventListener('click', () => {
+  els.previewPanel.addEventListener('click', (e) => {
+    // Allow native controls to handle clicks when visible
+
     if (els.previewPanel.classList.contains('playing')) {
-      if (els.previewVideo.paused) els.previewVideo.play();
-      else els.previewVideo.pause();
-    } else {
+      // If video has controls, let them handle the interaction
+      if (!els.previewVideo.controls) {
+        if (els.previewVideo.paused) els.previewVideo.play();
+        else els.previewVideo.pause();
+      }
+    } else if (e.target === els.previewPanel || e.target.closest('.play-btn')) {
       startPreview();
     }
   });
