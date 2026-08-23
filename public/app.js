@@ -478,10 +478,10 @@
 
   els.catFilter.addEventListener('input', () => renderCategories(els.catFilter.value));
 
-  async function selectCategory(id) {
+  async function selectCategory(id, opts) {
     state.activeCategoryId = id;
     renderCategories(els.catFilter.value);
-    await loadEpg(id);
+    await loadEpg(id, opts);
     // on mobile the categories panel is a full-screen overlay, not a side
     // column - close it automatically once a choice is made so the guide
     // that was just loaded is actually visible
@@ -592,7 +592,7 @@
   });
 
   // ---------------- EPG rows ----------------
-  async function loadEpg(categoryId) {
+  async function loadEpg(categoryId, { autoJump = true } = {}) {
     els.epgRows.innerHTML = `<div class="empty-hint">Loading guide...</div>`;
     els.epgList.innerHTML = `<div class="empty-hint">Loading guide...</div>`;
     const data = await api(`/epg?category_id=${encodeURIComponent(categoryId)}&start=${timelineStart}&end=${timelineEnd}`);
@@ -603,13 +603,17 @@
       // a specific program right after loadEpg (e.g. search) must not race
       // against an async re-render that would wipe its selection
       resetListToToday();
-      scrollListToLive();
+      if (autoJump) scrollListToLive();
     } else {
       renderActiveEpgView();
-      // only now does the grid actually have real (7-day-wide) content to scroll
-      // within - jumping to "now" any earlier is a no-op, since the browser
-      // clamps scrollLeft back to 0 on a container with nothing to scroll yet.
-      requestAnimationFrame(() => els.jumpNow.click());
+      // autoJump is deferred via rAF because only now does the grid have
+      // real (7-day-wide) content to scroll within - jumping to "now" any
+      // earlier is a no-op, since the browser clamps scrollLeft back to 0 on
+      // a container with nothing to scroll yet. A caller that's about to
+      // scroll to a specific program itself (e.g. search) must pass
+      // autoJump:false, or this deferred scroll fires a frame later and
+      // clobbers the scrollLeft it just set.
+      if (autoJump) requestAnimationFrame(() => els.jumpNow.click());
     }
   }
 
@@ -1088,9 +1092,12 @@
         const channelId = item.dataset.channel;
         els.searchResults.classList.remove('open');
         els.progSearch.value = '';
-        await selectCategory(categoryId);
 
         const startMs = item.dataset.start ? Number(item.dataset.start) : null;
+        // a specific program target means we're about to scroll/select it
+        // ourselves below - the category load's own auto "jump to now" must
+        // be suppressed or it fires a moment later and overwrites that
+        await selectCategory(categoryId, { autoJump: startMs === null });
 
         if (state.viewMode === 'list') {
           // scroll to the channel section and, if a specific program, its day/time
