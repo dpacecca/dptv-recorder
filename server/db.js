@@ -58,6 +58,20 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
+  -- API keys for apps (e.g. DPTV-Player) that call the API without a browser
+  -- session. Only a SHA-256 of the key is stored; the key itself is shown once,
+  -- when it's created. A key acts as the user who created it.
+  CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    key_hash TEXT UNIQUE NOT NULL,
+    key_prefix TEXT NOT NULL,       -- first characters of the key, so the UI can tell keys apart
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+
   -- system-wide settings (OIDC config etc) - not scoped to a user
   CREATE TABLE IF NOT EXISTS system_settings (
     key TEXT PRIMARY KEY,

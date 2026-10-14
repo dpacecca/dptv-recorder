@@ -240,6 +240,33 @@ you're sending real passwords over the network for local login), consider
 setting the `secure` flag on the session cookie in `server/auth.js` - it's
 left `false` by default so plain-HTTP LAN setups keep working out of the box.
 
+## API keys (for apps such as DPTV-Player)
+
+Apps can use the API without a browser login. In **Settings → Account → API keys**, give the key a
+name (e.g. "Living room TV") and click **Generate key**. The key is shown **once** - copy it into the
+app. It acts as your account, so the app sees your channels and recordings. Revoke it there at any
+time; the list shows when each key was last used.
+
+Send the key with every request, either way:
+
+```
+Authorization: Bearer dptv_…
+X-API-Key: dptv_…
+```
+
+Main endpoints:
+
+| Method | Path | What it does |
+|---|---|---|
+| `GET` | `/api/recordings` | Your recordings (scheduled, recording, completed, failed) |
+| `POST` | `/api/recordings` | Schedule one: JSON `{ channelId, channelName, programTitle, programStart, programStop }` - `channelId` is the XC `stream_id`, times are epoch milliseconds |
+| `GET` | `/api/recordings/for-program?channel_id=&start=&stop=` | The recording for one programme, if any |
+| `DELETE` | `/api/recordings/:id` | Cancel a scheduled/active recording (`?status=completed` etc. deletes a finished one) |
+| `GET` | `/api/channels`, `/api/epg` | Channel list and guide |
+
+Keys can't manage API keys or reach the admin settings - those need a signed-in browser session.
+Only a SHA-256 hash of each key is stored in the database.
+
 ## Exposing this externally (HTTPS)
 
 See `CLOUDFLARE_TUNNEL.md` for the recommended setup (Cloudflare Tunnel with
