@@ -1438,7 +1438,76 @@
     document.getElementById('acctCurrentPassword').value = '';
     document.getElementById('acctNewPassword').value = '';
     document.getElementById('acctError').textContent = '';
+    document.getElementById('apiKeyNew').style.display = 'none';
+    document.getElementById('apiKeyNewValue').value = '';
+    loadApiKeys();
   }
+
+  // ---------------- API keys (account tab) ----------------
+  function formatKeyTime(ms) {
+    return ms ? new Date(ms).toLocaleString() : 'never';
+  }
+
+  async function loadApiKeys() {
+    const listEl = document.getElementById('apiKeysList');
+    const errEl = document.getElementById('apiKeysError');
+    errEl.textContent = '';
+    try {
+      const keys = await api('/auth/api-keys');
+      listEl.innerHTML = keys.map((k) => `
+        <div class="rec-item">
+          <div class="rec-info">
+            <div class="rec-title">${escapeHtml(k.name)} <span style="color:var(--text-faint)">— ${escapeHtml(k.key_prefix)}…</span></div>
+            <div class="rec-meta">created ${escapeHtml(formatKeyTime(k.created_at))} · last used ${escapeHtml(formatKeyTime(k.last_used_at))}</div>
+          </div>
+          <div class="rec-actions"><button data-key-id="${k.id}">Revoke</button></div>
+        </div>
+      `).join('') || `<div class="recordings-empty">No API keys yet.</div>`;
+      listEl.querySelectorAll('button[data-key-id]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Revoke this key? Apps using it will stop working.')) return;
+          try {
+            await api(`/auth/api-keys/${btn.dataset.keyId}`, { method: 'DELETE' });
+            await loadApiKeys();
+          } catch (err) {
+            errEl.textContent = err.message;
+          }
+        });
+      });
+    } catch (err) {
+      errEl.textContent = err.message;
+    }
+  }
+
+  document.getElementById('apiKeyCreate').addEventListener('click', async () => {
+    const nameEl = document.getElementById('apiKeyName');
+    const errEl = document.getElementById('apiKeysError');
+    errEl.textContent = '';
+    try {
+      const created = await api('/auth/api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nameEl.value.trim() }),
+      });
+      nameEl.value = '';
+      document.getElementById('apiKeyNewValue').value = created.key;
+      document.getElementById('apiKeyNew').style.display = 'flex';
+      await loadApiKeys();
+    } catch (err) {
+      errEl.textContent = err.message;
+    }
+  });
+
+  document.getElementById('apiKeyCopy').addEventListener('click', async () => {
+    const input = document.getElementById('apiKeyNewValue');
+    try {
+      await navigator.clipboard.writeText(input.value);
+    } catch (_) {
+      // Clipboard API needs HTTPS or localhost; fall back to selecting the text for Ctrl+C.
+      input.select();
+      document.execCommand('copy');
+    }
+  });
 
   document.getElementById('userMenuBtn').addEventListener('click', async () => {
     loadAccountTab();

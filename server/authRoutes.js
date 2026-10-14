@@ -143,7 +143,7 @@ router.get('/oidc/callback', async (req, res) => {
 });
 
 // ---------------- admin: OIDC configuration ----------------
-router.get('/admin/oidc-settings', auth.requireAuth, auth.requireAdmin, (req, res) => {
+router.get('/admin/oidc-settings', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
   res.json({
     issuer: getSystemSetting('oidc_issuer', ''),
     clientId: getSystemSetting('oidc_client_id', ''),
@@ -153,7 +153,7 @@ router.get('/admin/oidc-settings', auth.requireAuth, auth.requireAdmin, (req, re
   });
 });
 
-router.post('/admin/oidc-settings', auth.requireAuth, auth.requireAdmin, (req, res) => {
+router.post('/admin/oidc-settings', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
   const { issuer, clientId, clientSecret, redirectUri, disablePasswordLogin } = req.body || {};
   if (issuer !== undefined) setSystemSetting('oidc_issuer', issuer);
   if (clientId !== undefined) setSystemSetting('oidc_client_id', clientId);
@@ -165,7 +165,7 @@ router.post('/admin/oidc-settings', auth.requireAuth, auth.requireAdmin, (req, r
 });
 
 // ---------------- admin: Cloudflare Access ----------------
-router.get('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireAdmin, (req, res) => {
+router.get('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
   res.json({
     teamDomain: getSystemSetting('cf_access_team_domain', ''),
     aud: getSystemSetting('cf_access_aud', ''),
@@ -173,7 +173,7 @@ router.get('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireAd
   });
 });
 
-router.post('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireAdmin, (req, res) => {
+router.post('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
   const { teamDomain, aud } = req.body || {};
   if (teamDomain !== undefined) setSystemSetting('cf_access_team_domain', teamDomain);
   if (aud !== undefined) setSystemSetting('cf_access_aud', aud);
@@ -182,11 +182,11 @@ router.post('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireA
 });
 
 // ---------------- admin: user management ----------------
-router.get('/admin/users', auth.requireAuth, auth.requireAdmin, (req, res) => {
+router.get('/admin/users', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
   res.json(auth.listUsers());
 });
 
-router.post('/admin/users', auth.requireAuth, auth.requireAdmin, (req, res) => {
+router.post('/admin/users', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
   const { username, password, firstName, lastName, email, isAdmin } = req.body || {};
   if (!username || !password || !firstName || !lastName || !email) {
     return res.status(400).json({ error: 'Username, password, first name, last name, and email are all required.' });
@@ -204,11 +204,33 @@ router.post('/admin/users', auth.requireAuth, auth.requireAdmin, (req, res) => {
   }
 });
 
-router.delete('/admin/users/:id', auth.requireAuth, auth.requireAdmin, (req, res) => {
+router.delete('/admin/users/:id', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user.id) return res.status(400).json({ error: "You can't delete your own account while signed in as it." });
   auth.destroyAllSessionsForUser(id);
+  require('./db').db.prepare('DELETE FROM api_keys WHERE user_id = ?').run(id);
   require('./db').db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  res.json({ ok: true });
+});
+
+// ---------------- API keys ----------------
+// Managed only from a signed-in browser session (requireSession), never with
+// an API key itself. The key is returned once, on creation.
+router.get('/api-keys', auth.requireAuth, auth.requireSession, (req, res) => {
+  res.json(auth.listApiKeys(req.user.id));
+});
+
+router.post('/api-keys', auth.requireAuth, auth.requireSession, (req, res) => {
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 100);
+  if (!name) return res.status(400).json({ error: 'Give the key a name, e.g. "Living room TV".' });
+  const { id, key } = auth.createApiKey(req.user.id, name);
+  res.json({ id, name, key });
+});
+
+router.delete('/api-keys/:id', auth.requireAuth, auth.requireSession, (req, res) => {
+  if (!auth.revokeApiKey(req.user.id, Number(req.params.id))) {
+    return res.status(404).json({ error: 'API key not found.' });
+  }
   res.json({ ok: true });
 });
 

@@ -454,6 +454,10 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   padding:9px 10px; color:var(--text); font-size:13px; min-width:0;
 }
 .admin-user-add button{ grid-column:1 / -1; }
+.api-key-add, .api-key-new-row{ display:flex; gap:8px; }
+.api-key-add input, .api-key-new-row input{ flex:1; min-width:0; }
+.api-key-new{ flex-direction:column; gap:6px; }
+.api-key-new-row input{ font-family:var(--font-mono); font-size:12px; }
 #newUserPassword{ grid-column:1 / -1; }
 .epg-source-add input{
   flex:1; min-width:140px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;

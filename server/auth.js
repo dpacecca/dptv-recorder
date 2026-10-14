@@ -123,8 +123,67 @@ setInterval(() => {
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
 }, 60 * 60 * 1000).unref();
 
+// ---------------- API keys ----------------
+// For apps that call the API directly (e.g. DPTV-Player scheduling a recording),
+// sent as "Authorization: Bearer <key>" or "X-API-Key: <key>". Keys are 32 random
+// bytes, so a plain SHA-256 is enough to store them safely (no bcrypt needed,
+// which would also make every API call slow).
+const API_KEY_PREFIX = 'dptv_';
+const LAST_USED_WRITE_INTERVAL_MS = 60 * 1000;
+
+function hashApiKey(key) {
+  return crypto.createHash('sha256').update(key).digest('hex');
+}
+
+function createApiKey(userId, name) {
+  const key = API_KEY_PREFIX + crypto.randomBytes(32).toString('hex');
+  const info = db.prepare(`
+    INSERT INTO api_keys (user_id, name, key_hash, key_prefix, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(userId, name, hashApiKey(key), key.slice(0, API_KEY_PREFIX.length + 6), Date.now());
+  return { id: info.lastInsertRowid, key };
+}
+
+function listApiKeys(userId) {
+  return db.prepare(`
+    SELECT id, name, key_prefix, created_at, last_used_at FROM api_keys
+    WHERE user_id = ? ORDER BY created_at DESC
+  `).all(userId);
+}
+
+function revokeApiKey(userId, id) {
+  return db.prepare('DELETE FROM api_keys WHERE user_id = ? AND id = ?').run(userId, id).changes > 0;
+}
+
+function apiKeyFromRequest(req) {
+  const header = req.get('authorization') || '';
+  const match = /^Bearer\s+(\S+)$/i.exec(header);
+  return (match && match[1]) || req.get('x-api-key') || null;
+}
+
+function resolveApiKey(key) {
+  if (!key || !key.startsWith(API_KEY_PREFIX)) return null;
+  const row = db.prepare('SELECT * FROM api_keys WHERE key_hash = ?').get(hashApiKey(key));
+  if (!row) return null;
+  const now = Date.now();
+  if (!row.last_used_at || now - row.last_used_at > LAST_USED_WRITE_INTERVAL_MS) {
+    db.prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').run(now, row.id);
+  }
+  return findUserById(row.user_id);
+}
+
 // ---------------- middleware ----------------
+// Accepts either a browser session cookie or an API key. req.authMethod says
+// which, so key management can insist on a real sign-in (see requireSession).
 function requireAuth(req, res, next) {
+  const apiKey = apiKeyFromRequest(req);
+  if (apiKey) {
+    const keyUser = resolveApiKey(apiKey);
+    if (!keyUser) return res.status(401).json({ error: 'Invalid API key.' });
+    req.user = keyUser;
+    req.authMethod = 'api_key';
+    return next();
+  }
   const token = req.cookies && req.cookies[SESSION_COOKIE];
   const user = resolveSession(token);
   if (!user) return res.status(401).json({ error: 'Not signed in.' });
@@ -132,6 +191,14 @@ function requireAuth(req, res, next) {
     return res.status(403).json({ error: 'Password change required.', mustChangePassword: true });
   }
   req.user = user;
+  req.authMethod = 'session';
+  next();
+}
+
+// Run after requireAuth: rejects API-key requests, so a leaked key can't be
+// used to mint more keys or change the account.
+function requireSession(req, res, next) {
+  if (req.authMethod !== 'session') return res.status(403).json({ error: 'This needs a signed-in session - API keys cannot be used here.' });
   next();
 }
 
@@ -182,7 +249,11 @@ module.exports = {
   destroyAllSessionsForUser,
   resolveSession,
   requireAuth,
+  requireSession,
   requireAdmin,
+  createApiKey,
+  listApiKeys,
+  revokeApiKey,
   setSessionCookie,
   clearSessionCookie,
 };

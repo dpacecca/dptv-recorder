@@ -257,6 +257,23 @@
         <button id="acctLogout" class="btn-secondary">Sign out</button>
         <button id="acctSave" class="btn-primary">Save</button>
       </div>
+
+      <div class="modal-hint" style="margin-top:14px"><strong>API keys</strong></div>
+      <div class="modal-hint">For apps that talk to DPTV Recorder directly, such as DPTV-Player scheduling
+        recordings. A key acts as your account. Send it as <code>Authorization: Bearer &lt;key&gt;</code>.</div>
+      <div id="apiKeysList" class="recordings-list"></div>
+      <div class="api-key-add">
+        <input type="text" id="apiKeyName" placeholder="Key name, e.g. Living room TV" maxlength="100">
+        <button id="apiKeyCreate" class="btn-secondary">Generate key</button>
+      </div>
+      <div class="api-key-new" id="apiKeyNew" style="display:none">
+        <div class="modal-hint">Copy this key now - it won't be shown again.</div>
+        <div class="api-key-new-row">
+          <input type="text" id="apiKeyNewValue" readonly>
+          <button id="apiKeyCopy" class="btn-secondary">Copy</button>
+        </div>
+      </div>
+      <div class="modal-error" id="apiKeysError"></div>
     </div>
 
     <div class="modal-tab-panel" id="tabAdmin" style="display:none">
