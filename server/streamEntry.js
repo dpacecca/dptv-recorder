@@ -27,4 +27,19 @@ function buildStreamEntryPath(userId, channelId, ext = 'm3u8') {
   return ext === 'ts' ? tsProxyPathFor(upstreamUrl) : proxyPathFor(upstreamUrl, ext);
 }
 
-module.exports = { buildStreamEntryPath };
+// Same as buildStreamEntryPath, for a catch-up recording: the provider's
+// archive of [startMs, startMs + durationMin], through the raw ts proxy so the
+// XC credentials never reach ffmpeg's command line or the logs.
+function buildCatchupEntryPath(userId, channelId, startMs, durationMin) {
+  const host = getSetting(userId, 'xc_host');
+  const username = getSetting(userId, 'xc_username');
+  const password = getSetting(userId, 'xc_password');
+  if (!host || !username || !password) {
+    throw new Error('XC server not configured');
+  }
+  const channel = db.prepare('SELECT * FROM channels WHERE user_id = ? AND id = ?').get(userId, channelId);
+  if (!channel) throw new Error('channel not found');
+  return tsProxyPathFor(xc.timeshiftUrl(host, username, password, channel.id, startMs, durationMin));
+}
+
+module.exports = { buildStreamEntryPath, buildCatchupEntryPath };

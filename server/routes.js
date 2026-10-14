@@ -7,6 +7,7 @@ const { buildStreamEntryPath } = require('./streamEntry');
 const recorder = require('./recorder');
 const notifier = require('./notifier');
 const auth = require('./auth');
+const { makeFileToken } = require('./recordingFiles');
 
 const router = express.Router();
 
@@ -251,6 +252,19 @@ router.post('/recordings', (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// GET /api/recordings/:id/stream -> { url } : a short-lived link to the file
+// (see recordingFiles.js), for players that can't send the API key on every
+// request. Works while a recording is still in progress too (raw .ts grows).
+router.get('/recordings/:id/stream', (req, res) => {
+  const found = recorder.recordingFilePath(req.user.id, Number(req.params.id));
+  if (!found) return res.status(404).json({ error: 'No file for this recording yet.' });
+  res.json({
+    url: `/api/recording-file/${makeFileToken(found.path)}`,
+    filename: found.row.filename,
+    status: found.row.status,
+  });
 });
 
 router.delete('/recordings/:id', (req, res) => {

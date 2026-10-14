@@ -55,6 +55,16 @@ program title alone (not the channel name too), since some providers embed
 the event name directly in the channel name for PPV/event channels, which
 made the old channel+title filename redundant.
 
+### Catch-up (recording programmes that already aired)
+
+Scheduling a programme that has **already finished** records it from your provider's archive
+instead (the Xtream `timeshift` URL), starting straight away - as long as the channel has catch-up
+and the programme is still inside the provider's archive window. The before/after padding applies
+here too. It's a download rather than a live capture: it finishes when the archive has sent the
+programme, and it isn't reconnected/appended on a drop (that would duplicate the programme). The
+archive start time is sent in the container's timezone, so set `TZ` in `.env` to your panel's
+timezone (usually your own).
+
 ### Where recordings are stored
 
 Recordings are written inside the container at `/recordings`. In
@@ -261,6 +271,7 @@ Main endpoints:
 | `GET` | `/api/recordings` | Your recordings (scheduled, recording, completed, failed) |
 | `POST` | `/api/recordings` | Schedule one: JSON `{ channelId, channelName, programTitle, programStart, programStop }` - `channelId` is the XC `stream_id`, times are epoch milliseconds |
 | `GET` | `/api/recordings/for-program?channel_id=&start=&stop=` | The recording for one programme, if any |
+| `GET` | `/api/recordings/:id/stream` | `{ url }` - a short-lived link to the recording's file (supports seeking, works mid-recording) for players that can't send the key with every request |
 | `DELETE` | `/api/recordings/:id` | Cancel a scheduled/active recording (`?status=completed` etc. deletes a finished one) |
 | `GET` | `/api/channels`, `/api/epg` | Channel list and guide |
 

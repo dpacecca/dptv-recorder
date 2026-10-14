@@ -3,7 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { db, getSetting, setSetting } = require('./db');
 const notifier = require('./notifier');
-const { buildStreamEntryPath } = require('./streamEntry');
+const { buildStreamEntryPath, buildCatchupEntryPath } = require('./streamEntry');
 
 const BASE_RECORDINGS_DIR = process.env.RECORDINGS_PATH || '/recordings';
 const PORT = process.env.PORT || 3000;
@@ -85,16 +85,23 @@ function scheduleRecording(userId, { channelId, channelName, programTitle, progr
   const { before, after } = padMinutes(userId);
   const now = Date.now();
   let recStart = programStart - before * 60000;
-  const recEnd = programStop + after * 60000;
-  if (recStart < now) recStart = now; // program already airing (or padding pushed us into the past)
-  if (recEnd <= now) {
-    throw new Error('This program has already ended.');
+  let recEnd = programStop + after * 60000;
+  let kind = 'live';
+  if (programStop <= now) {
+    // Already aired: fetch it from the provider's archive (catch-up) instead,
+    // starting now. rec_end becomes a deadline for the download - archives
+    // usually stream at least as fast as real time - plus headroom.
+    kind = 'catchup';
+    recStart = now;
+    recEnd = now + (programStop - programStart) + (before + after) * 60000 + CATCHUP_HEADROOM_MS;
+  } else if (recStart < now) {
+    recStart = now; // program already airing (or padding pushed us into the past)
   }
 
   const info = db.prepare(`
-    INSERT INTO recordings (user_id, channel_id, channel_name, program_title, program_start, program_stop, rec_start, rec_end, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)
-  `).run(userId, channelId, channelName, programTitle, programStart, programStop, recStart, recEnd, now);
+    INSERT INTO recordings (user_id, channel_id, channel_name, program_title, program_start, program_stop, rec_start, rec_end, status, created_at, kind)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)
+  `).run(userId, channelId, channelName, programTitle, programStart, programStop, recStart, recEnd, now, kind);
 
   const row = rowById(info.lastInsertRowid);
   if (recStart <= now) startRecording(row); // starts immediately if within the window right now
@@ -130,11 +137,12 @@ function remuxToMkv(row, tsPath) {
 }
 
 const MAX_RESUME_ATTEMPTS = 5;
+const CATCHUP_HEADROOM_MS = 30 * 60000; // catch-up deadline slack beyond the programme's own length
 const EARLY_EXIT_THRESHOLD_MS = 20000; // exiting >20s before rec_end counts as "early" - a clean
                                         // finish via -t naturally lands within a couple seconds of it
 const RESUME_BACKOFF_MS = 4000;
 
-function buildFfmpegArgs(streamUrl, output, durationSec, muxer) {
+function buildFfmpegArgs(streamUrl, output, durationSec, muxer, hlsInput = true) {
   return [
     '-y',
     // tolerate brief network drop-outs/buffering instead of failing outright -
@@ -142,10 +150,12 @@ function buildFfmpegArgs(streamUrl, output, durationSec, muxer) {
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '5',
-    '-allowed_extensions', 'ALL', // belt-and-suspenders: proxy URLs now carry real extensions,
-                                  // but some providers use segment extensions outside ffmpeg's
-                                  // built-in whitelist (e.g. unusual fMP4 naming) - this avoids
-                                  // that whole class of "not in allowed_segment_extensions" failures
+    // belt-and-suspenders: proxy URLs now carry real extensions, but some
+    // providers use segment extensions outside ffmpeg's built-in whitelist
+    // (e.g. unusual fMP4 naming) - this avoids that whole class of "not in
+    // allowed_segment_extensions" failures. HLS-demuxer-only: a raw .ts input
+    // (catch-up) rejects it outright ("Option allowed_extensions not found").
+    ...(hlsInput ? ['-allowed_extensions', 'ALL'] : []),
     '-fflags', '+genpts+discardcorrupt', // regenerate timestamps if missing/broken, and drop
                                           // individually corrupt packets instead of aborting -
                                           // live TV streams routinely have minor irregularities
@@ -174,11 +184,11 @@ function buildFfmpegArgs(streamUrl, output, durationSec, muxer) {
 // whenever a resumed attempt happens to fully finish. Raw MPEG-TS has no
 // trailer/index, so appending mid-stream (even across separate ffmpeg
 // processes) is always safe.
-function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendTo) {
+function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendTo, hlsInput = true) {
   return new Promise((resolve) => {
     let proc;
     try {
-      proc = spawn('ffmpeg', buildFfmpegArgs(streamUrl, appendTo ? 'pipe:1' : outputPath, durationSec, muxer), {
+      proc = spawn('ffmpeg', buildFfmpegArgs(streamUrl, appendTo ? 'pipe:1' : outputPath, durationSec, muxer, hlsInput), {
         stdio: appendTo ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'ignore', 'pipe'],
       });
     } catch (err) {
@@ -247,20 +257,31 @@ async function startRecording(row) {
   let attempt = 0;
   let lastResult = null;
 
+  // Catch-up: the archive window is the programme plus the user's padding, and
+  // the stream ends on its own when that window has been sent.
+  const isCatchup = row.kind === 'catchup';
+  const { before: padBefore, after: padAfter } = padMinutes(row.user_id);
+  const archiveStart = row.program_start - padBefore * 60000;
+  const archiveMinutes = Math.ceil((row.program_stop + padAfter * 60000 - archiveStart) / 60000);
+
   while (true) {
-    const durationSec = Math.max(1, Math.round((row.rec_end - Date.now()) / 1000));
+    const durationSec = isCatchup
+      ? archiveMinutes * 60 // cap at the window; an archive that keeps going past it is cut here
+      : Math.max(1, Math.round((row.rec_end - Date.now()) / 1000));
 
     let streamPath;
     try {
-      streamPath = buildStreamEntryPath(row.user_id, row.channel_id); // re-resolved fresh every attempt
+      streamPath = isCatchup
+        ? buildCatchupEntryPath(row.user_id, row.channel_id, archiveStart, archiveMinutes)
+        : buildStreamEntryPath(row.user_id, row.channel_id); // re-resolved fresh every attempt
     } catch (err) {
       lastResult = { code: -1, stderrTail: err.message };
       break;
     }
     const streamUrl = `http://127.0.0.1:${PORT}${streamPath}`;
 
-    console.log(`[recorder] #${row.id} (attempt ${attempt + 1}) recording "${row.program_title}" -> ${outputPath} (${durationSec}s, ${muxer})`);
-    const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream);
+    console.log(`[recorder] #${row.id} (attempt ${attempt + 1}) recording${isCatchup ? ' from the archive' : ''} "${row.program_title}" -> ${outputPath} (${durationSec}s, ${muxer})`);
+    const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream, !isCatchup);
     lastResult = result;
     if (appendStreamErr) lastResult.stderrTail = (lastResult.stderrTail || '') + '\n' + appendStreamErr;
 
@@ -271,6 +292,10 @@ async function startRecording(row) {
       if (appendStream) await closeStream(appendStream);
       return;
     }
+
+    // Catch-up is a finite download: it ends when the archive does, not at a
+    // clock time, and reconnecting would append the programme a second time.
+    if (isCatchup) break;
 
     const msRemaining = row.rec_end - Date.now();
     const exitedEarly = msRemaining > EARLY_EXIT_THRESHOLD_MS;
@@ -348,6 +373,15 @@ function cancelRecording(userId, id) {
   }
 }
 
+// Absolute path of a recording's file, for playback. Null if it has none yet
+// or it's gone from disk.
+function recordingFilePath(userId, id) {
+  const row = ownedRowById(userId, id);
+  if (!row || !row.filename) return null;
+  const p = path.join(userRecordingsDir(userId), row.filename);
+  return fs.existsSync(p) ? { path: p, row } : null;
+}
+
 function deleteRecording(userId, id) {
   const row = ownedRowById(userId, id);
   if (!row) throw new Error('Recording not found');
@@ -402,6 +436,7 @@ module.exports = {
   scheduleRecording,
   cancelRecording,
   deleteRecording,
+  recordingFilePath,
   listRecordings,
   findForProgram,
   getRecordingSettings,
