@@ -8,6 +8,7 @@ require('./db'); // ensures schema exists
 const routes = require('./routes');
 const authRoutes = require('./authRoutes');
 const { hlsProxyHandler, tsProxyHandler } = require('./hlsProxy');
+const { recordingFileHandler } = require('./recordingFiles');
 const { initScheduler } = require('./sync');
 const recorder = require('./recorder');
 const { bootstrapDefaultAdmin, createSession, setSessionCookie, SESSION_COOKIE } = require('./auth');
@@ -61,6 +62,7 @@ app.get('/api/version', (req, res) => {
 // token in the URL itself, not a login session.
 app.get('/api/hls/:tokenExt', hlsProxyHandler);
 app.get('/api/live-ts/:token', tsProxyHandler);
+app.get('/api/recording-file/:token', recordingFileHandler);
 
 // Auth endpoints (login, OIDC, password change, admin user management) -
 // intentionally NOT behind the main auth middleware, since /login and the

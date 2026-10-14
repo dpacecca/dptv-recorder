@@ -145,6 +145,16 @@ db.exec(`
   );
 `);
 
+// ---- migration: recordings.kind ('live' or 'catchup') ----
+// Catch-up recordings are fetched from the provider's archive after the
+// programme aired. Existing rows are all live recordings, hence the default.
+(function addRecordingKind() {
+  const cols = db.prepare('PRAGMA table_info(recordings)').all();
+  if (!cols.some((c) => c.name === 'kind')) {
+    db.exec("ALTER TABLE recordings ADD COLUMN kind TEXT NOT NULL DEFAULT 'live'");
+  }
+})();
+
 function getSetting(userId, key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE user_id = ? AND key = ?').get(userId, key);
   return row ? row.value : fallback;

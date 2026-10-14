@@ -95,6 +95,22 @@ function liveStreamUrl(host, username, password, streamId, ext = 'm3u8') {
   return `${base}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${streamId}.${ext}`;
 }
 
+// Xtream catch-up ("timeshift") URL for a programme that has already aired:
+//   <host>/timeshift/<user>/<pass>/<duration minutes>/<YYYY-MM-DD:HH-MM>/<stream_id>.ts
+// The start time is wall-clock time in the panel's timezone. That's the TZ this
+// container runs in (set TZ in .env), which is also how EPG times are read.
+function timeshiftUrl(host, username, password, streamId, startMs, durationMin) {
+  const base = normalizeHost(host);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: process.env.TZ || 'UTC',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(startMs));
+  const get = (type) => parts.find((p) => p.type === type).value;
+  const start = `${get('year')}-${get('month')}-${get('day')}:${get('hour')}-${get('minute')}`;
+  return `${base}/timeshift/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${durationMin}/${start}/${streamId}.ts`;
+}
+
 // Fetches an XMLTV document from an arbitrary URL - used for custom/alternate
 // EPG sources that aren't the XC panel's own xmltv.php (e.g. a dedicated EPG
 // provider whose data is more reliable for PPV/event channels).
@@ -111,6 +127,7 @@ async function fetchGenericXmltv(url, timeoutMs = 120000) {
 }
 
 module.exports = {
+  timeshiftUrl,
   normalizeHost,
   testAuth,
   getLiveCategories,
