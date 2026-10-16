@@ -141,6 +141,7 @@ const CATCHUP_HEADROOM_MS = 30 * 60000; // catch-up deadline slack beyond the pr
 const EARLY_EXIT_THRESHOLD_MS = 20000; // exiting >20s before rec_end counts as "early" - a clean
                                         // finish via -t naturally lands within a couple seconds of it
 const RESUME_BACKOFF_MS = 4000;
+const FAST_FAIL_MS = 30000; // a live attempt that fails this soon never had a stream going
 
 function buildFfmpegArgs(streamUrl, output, durationSec, muxer, hlsInput = true) {
   return [
@@ -256,12 +257,14 @@ async function startRecording(row) {
 
   let attempt = 0;
   let lastResult = null;
-  // The live entry is an HLS proxy, but some providers answer it with a raw MPEG-TS stream (often only
-  // after a reconnect). ffmpeg 5.x refuses to start when an input option nothing consumes is given,
-  // so the HLS-only -allowed_extensions fails every attempt on such a stream with "Option
-  // allowed_extensions not found". Dropped for the rest of this recording the first time that happens.
-  let hlsOption = row.kind !== 'catchup';
-  let hlsFallbackUsed = false;
+  // The live entry is the HLS proxy, but some providers answer a channel's .m3u8 with its raw, never-
+  // ending MPEG-TS stream (often only after a reconnect). The HLS proxy buffers whole responses, so that
+  // stream never arrives, and ffmpeg 5.x also refuses the HLS-only -allowed_extensions on it ("Option
+  // allowed_extensions not found"). The first time a live attempt fails within FAST_FAIL_MS - ffmpeg never
+  // got a stream going - the rest of this recording uses the channel's .ts entry instead, which the raw
+  // ts proxy streams through as it arrives, without the HLS option. That retry is outside the resume budget.
+  let liveExt = 'm3u8';
+  let tsFallbackUsed = false;
 
   // Catch-up: the archive window is the programme plus the user's padding, and
   // the stream ends on its own when that window has been sent.
@@ -279,7 +282,7 @@ async function startRecording(row) {
     try {
       streamPath = isCatchup
         ? buildCatchupEntryPath(row.user_id, row.channel_id, archiveStart, archiveMinutes)
-        : buildStreamEntryPath(row.user_id, row.channel_id); // re-resolved fresh every attempt
+        : buildStreamEntryPath(row.user_id, row.channel_id, liveExt); // re-resolved fresh every attempt
     } catch (err) {
       lastResult = { code: -1, stderrTail: err.message };
       break;
@@ -287,14 +290,13 @@ async function startRecording(row) {
     const streamUrl = `http://127.0.0.1:${PORT}${streamPath}`;
 
     console.log(`[recorder] #${row.id} (attempt ${attempt + 1}) recording${isCatchup ? ' from the archive' : ''} "${row.program_title}" -> ${outputPath} (${durationSec}s, ${muxer})`);
-    const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream, hlsOption);
+    const startedAt = Date.now();
+    const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream, !isCatchup && liveExt === 'm3u8');
     lastResult = result;
-    if (hlsOption && !hlsFallbackUsed && result.code !== 0 && /Option allowed_extensions not found/i.test(result.stderrTail || '')) {
-      // Not a drop: ffmpeg never opened the stream. Go again at once without the option, outside the
-      // resume budget.
-      console.warn(`[recorder] #${row.id} input is not HLS - retrying without -allowed_extensions`);
-      hlsOption = false;
-      hlsFallbackUsed = true;
+    if (!isCatchup && liveExt === 'm3u8' && !tsFallbackUsed && result.code !== 0 && Date.now() - startedAt < FAST_FAIL_MS) {
+      console.warn(`[recorder] #${row.id} the HLS entry failed at once (code ${result.code}) - retrying on the channel's .ts stream`);
+      liveExt = 'ts';
+      tsFallbackUsed = true;
       continue;
     }
     if (appendStreamErr) lastResult.stderrTail = (lastResult.stderrTail || '') + '\n' + appendStreamErr;
@@ -333,7 +335,10 @@ async function startRecording(row) {
 function finalizeRecording(row, format, outputPath, result, resumed) {
   const { code, stderrTail } = result;
   const size = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : -1;
-  const tail = (stderrTail || '').split('\n').filter(Boolean).slice(-8).join(' | ').trim();
+  // ffmpeg's version banner (ffmpeg version, built with, configuration, lib* lines) is not the error; with a
+  // fast failure it filled the whole tail and the notification was cut off before the actual cause.
+  const banner = /^\s*(ffmpeg version|built with|configuration:|lib(avutil|avcodec|avformat|avdevice|avfilter|swscale|swresample|postproc)\b)/;
+  const tail = (stderrTail || '').split('\n').filter((l) => l.trim() && !banner.test(l)).slice(-8).join(' | ').trim();
   const diskFull = /no space left on device|ENOSPC/i.test(stderrTail || '');
   const MIN_USABLE_BYTES = 200 * 1024; // ~200KB - enough to exclude an immediate-failure stub,
                                         // small enough to still catch "recorded fine, hiccuped at the end"
