@@ -256,6 +256,12 @@ async function startRecording(row) {
 
   let attempt = 0;
   let lastResult = null;
+  // The live entry is an HLS proxy, but some providers answer it with a raw MPEG-TS stream (often only
+  // after a reconnect). ffmpeg 5.x refuses to start when an input option nothing consumes is given,
+  // so the HLS-only -allowed_extensions fails every attempt on such a stream with "Option
+  // allowed_extensions not found". Dropped for the rest of this recording the first time that happens.
+  let hlsOption = row.kind !== 'catchup';
+  let hlsFallbackUsed = false;
 
   // Catch-up: the archive window is the programme plus the user's padding, and
   // the stream ends on its own when that window has been sent.
@@ -281,8 +287,16 @@ async function startRecording(row) {
     const streamUrl = `http://127.0.0.1:${PORT}${streamPath}`;
 
     console.log(`[recorder] #${row.id} (attempt ${attempt + 1}) recording${isCatchup ? ' from the archive' : ''} "${row.program_title}" -> ${outputPath} (${durationSec}s, ${muxer})`);
-    const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream, !isCatchup);
+    const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream, hlsOption);
     lastResult = result;
+    if (hlsOption && !hlsFallbackUsed && result.code !== 0 && /Option allowed_extensions not found/i.test(result.stderrTail || '')) {
+      // Not a drop: ffmpeg never opened the stream. Go again at once without the option, outside the
+      // resume budget.
+      console.warn(`[recorder] #${row.id} input is not HLS - retrying without -allowed_extensions`);
+      hlsOption = false;
+      hlsFallbackUsed = true;
+      continue;
+    }
     if (appendStreamErr) lastResult.stderrTail = (lastResult.stderrTail || '') + '\n' + appendStreamErr;
 
     const current = rowById(row.id);
