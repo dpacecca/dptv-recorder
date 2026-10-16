@@ -142,6 +142,7 @@ const EARLY_EXIT_THRESHOLD_MS = 20000; // exiting >20s before rec_end counts as 
                                         // finish via -t naturally lands within a couple seconds of it
 const RESUME_BACKOFF_MS = 4000;
 const FAST_FAIL_MS = 30000; // a live attempt that fails this soon never had a stream going
+const STALL_MS = 60000;     // an ffmpeg that writes nothing for this long is stopped and reconnected
 
 function buildFfmpegArgs(streamUrl, output, durationSec, muxer, hlsInput = true) {
   return [
@@ -199,17 +200,37 @@ function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, append
     activeProcs.set(row.id, { proc });
     let stderrTail = '';
     proc.stderr.on('data', (chunk) => { stderrTail = (stderrTail + chunk.toString()).slice(-4000); });
+    // Stall watchdog: an ffmpeg that writes nothing for STALL_MS is waiting on a stream that is not coming
+    // (it used to sit there until the end-time safety net killed it, with nothing recorded). It is stopped
+    // and reported as stalled, so the attempt loop can reconnect - on the .ts entry, the first time.
+    let lastProgressAt = Date.now();
+    let lastSize = -1;
+    let stalled = false;
     if (appendTo) {
+      proc.stdout.on('data', () => { lastProgressAt = Date.now(); });
       // {end:false}: a resume reconnects a *new* ffmpeg process onto this
       // same still-open destination stream - ending it when this process's
       // stdout closes would break every subsequent attempt
       proc.stdout.pipe(appendTo, { end: false });
     }
+    const watchdog = setInterval(() => {
+      if (!appendTo) {
+        const size = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : -1;
+        if (size !== lastSize) { lastSize = size; lastProgressAt = Date.now(); }
+      }
+      if (Date.now() - lastProgressAt > STALL_MS) {
+        stalled = true;
+        stderrTail += `\nNo data for ${Math.round(STALL_MS / 1000)}s - stopped and reconnecting`;
+        proc.kill('SIGTERM');
+      }
+    }, 5000);
     proc.on('close', (code) => {
+      clearInterval(watchdog);
       activeProcs.delete(row.id);
-      resolve({ code, stderrTail });
+      resolve({ code, stderrTail, stalled });
     });
     proc.on('error', (err) => {
+      clearInterval(watchdog);
       activeProcs.delete(row.id);
       resolve({ code: -1, stderrTail: 'ffmpeg error: ' + err.message });
     });
@@ -293,12 +314,6 @@ async function startRecording(row) {
     const startedAt = Date.now();
     const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream, !isCatchup && liveExt === 'm3u8');
     lastResult = result;
-    if (!isCatchup && liveExt === 'm3u8' && !tsFallbackUsed && result.code !== 0 && Date.now() - startedAt < FAST_FAIL_MS) {
-      console.warn(`[recorder] #${row.id} the HLS entry failed at once (code ${result.code}) - retrying on the channel's .ts stream`);
-      liveExt = 'ts';
-      tsFallbackUsed = true;
-      continue;
-    }
     if (appendStreamErr) lastResult.stderrTail = (lastResult.stderrTail || '') + '\n' + appendStreamErr;
 
     const current = rowById(row.id);
@@ -307,6 +322,14 @@ async function startRecording(row) {
       // output file - just make sure our own handle on it is closed too
       if (appendStream) await closeStream(appendStream);
       return;
+    }
+
+    const fastFail = result.code !== 0 && Date.now() - startedAt < FAST_FAIL_MS;
+    if (!isCatchup && liveExt === 'm3u8' && !tsFallbackUsed && (fastFail || result.stalled)) {
+      console.warn(`[recorder] #${row.id} the HLS entry ${result.stalled ? 'stalled' : 'failed at once'} (code ${result.code}) - retrying on the channel's .ts stream`);
+      liveExt = 'ts';
+      tsFallbackUsed = true;
+      continue;
     }
 
     // Catch-up is a finite download: it ends when the archive does, not at a

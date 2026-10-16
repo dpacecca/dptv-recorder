@@ -1,6 +1,15 @@
 const crypto = require('crypto');
 const { Readable } = require('stream');
 
+// Resolves when [res] can take more, or has closed (a client that left must not hold the copy loop forever).
+function drained(res) {
+  return new Promise((resolve) => {
+    const done = () => { res.off('drain', done); res.off('close', done); resolve(); };
+    res.on('drain', done);
+    res.on('close', done);
+  });
+}
+
 // Same UA used in xcClient.js - some panels block/serve differently based on
 // User-Agent for the actual stream endpoints too, not just player_api.php.
 const USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20';
@@ -116,8 +125,11 @@ async function hlsProxyHandler(req, res) {
   const url = resolveToken(token);
   if (!url) return res.status(410).send('stream link expired, reselect the channel');
 
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
+  res.on('error', () => {});
   try {
-    const upstream = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+    const upstream = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: controller.signal });
     if (!upstream.ok) {
       const body = await upstream.text().catch(() => '');
       return res.status(upstream.status).send(`upstream error (${upstream.status})${body ? ': ' + body.slice(0, 200) : ''}`);
@@ -133,25 +145,49 @@ async function hlsProxyHandler(req, res) {
     // panel correctly rejects as invalid.
     const finalUrl = upstream.url || url;
 
-    const buf = Buffer.from(await upstream.arrayBuffer());
-
-    // Content-sniff rather than trust headers/extensions - some panels send
-    // playlists with a generic or missing Content-Type, which would silently
-    // break detection if we relied on that alone.
-    const looksLikePlaylist = buf.slice(0, 7).toString('utf8') === '#EXTM3U';
+    // Content-sniff the first bytes rather than trust headers/extensions - some panels send playlists
+    // with a generic or missing Content-Type. Only a playlist is read in full (it is small and has to be
+    // rewritten); anything else is streamed through as it arrives. Some panels answer a live .m3u8 with
+    // the channel's raw, never-ending MPEG-TS stream: buffering that whole response never finished, so
+    // ffmpeg sat there with no data until the recording's end-time safety net killed it.
+    const reader = upstream.body.getReader();
+    const head = [];
+    let headLen = 0;
+    let done = false;
+    while (headLen < 7 && !done) {
+      const r = await reader.read();
+      done = r.done;
+      if (r.value) { head.push(Buffer.from(r.value)); headLen += r.value.length; }
+    }
+    const first = Buffer.concat(head);
+    const looksLikePlaylist = first.slice(0, 7).toString('utf8') === '#EXTM3U';
 
     if (looksLikePlaylist) {
+      const parts = [first];
+      while (!done) {
+        const r = await reader.read();
+        done = r.done;
+        if (r.value) parts.push(Buffer.from(r.value));
+      }
       res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
       res.setHeader('Cache-Control', 'no-store');
-      return res.send(rewritePlaylist(buf.toString('utf8'), finalUrl));
+      return res.send(rewritePlaylist(Buffer.concat(parts).toString('utf8'), finalUrl));
     }
 
-    // binary segment (.ts / .aac / etc) - stream through as-is
+    // binary segment (.ts / .aac / etc), or a raw live stream - stream through as-is
     const contentType = upstream.headers.get('content-type') || '';
     res.setHeader('Content-Type', contentType || 'video/mp2t');
     res.setHeader('Cache-Control', 'no-store');
-    return res.send(buf);
+    if (first.length && !res.write(first)) await drained(res);
+    while (!done) {
+      const r = await reader.read();
+      done = r.done;
+      if (r.value && !res.write(Buffer.from(r.value))) await drained(res);
+    }
+    return res.end();
   } catch (err) {
+    if (controller.signal.aborted) return; // the client went away - nothing to report
+    if (res.headersSent) return res.end();
     return res.status(502).send('proxy error: ' + err.message);
   }
 }
