@@ -11,6 +11,7 @@ const { hlsProxyHandler, tsProxyHandler } = require('./hlsProxy');
 const { recordingFileHandler } = require('./recordingFiles');
 const { initScheduler } = require('./sync');
 const recorder = require('./recorder');
+const timeshift = require('./timeshift');
 const { bootstrapDefaultAdmin, createSession, setSessionCookie, SESSION_COOKIE } = require('./auth');
 const cfAccess = require('./cloudflareAccess');
 const pkg = require('../package.json');
@@ -87,6 +88,7 @@ app.get('*', (req, res) => {
 
 function startServer() {
   bootstrapDefaultAdmin();
+  timeshift.cleanRoot(); // buffers never outlive the process that was keeping them
   initScheduler();
   recorder.init();
 }
