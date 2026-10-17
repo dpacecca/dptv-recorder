@@ -304,10 +304,12 @@ router.get('/timeshift/:id', (req, res) => {
 });
 
 // GET /api/timeshift/:id/stream?from=<epoch ms> -> MPEG-TS from that moment on (the newest piece
-// when omitted), following the live edge for as long as the client reads.
+// when omitted), following the live edge for as long as the client reads. ?live=1 starts at the
+// piece still being written, for the smallest delay.
 router.get('/timeshift/:id/stream', (req, res) => {
   const session = timeshift.owned(req.user.id, req.params.id);
   if (!session) return res.status(404).json({ error: 'No such buffer.' });
+  if (req.query.live === '1') return timeshift.streamLive(session, req, res);
   const from = req.query.from != null ? Number(req.query.from) : null;
   timeshift.stream(session, Number.isFinite(from) ? from : null, req, res);
 });
