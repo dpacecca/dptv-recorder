@@ -8,6 +8,7 @@ const recorder = require('./recorder');
 const notifier = require('./notifier');
 const auth = require('./auth');
 const { makeFileToken } = require('./recordingFiles');
+const timeshift = require('./timeshift');
 
 const router = express.Router();
 
@@ -279,6 +280,41 @@ router.delete('/recordings/:id', (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// ---------- live pause and rewind (DPTV-Player) ----------
+// POST /api/timeshift { channelId, windowMinutes } -> the buffer's state. Replaces this user's
+// previous buffer: the server holds one channel per user, as the single connection to the provider.
+router.post('/timeshift', (req, res) => {
+  const { channelId, windowMinutes } = req.body || {};
+  if (!channelId) return res.status(400).json({ error: 'channelId is required.' });
+  const channel = db.prepare('SELECT id FROM channels WHERE user_id = ? AND id = ?').get(req.user.id, String(channelId));
+  if (!channel) return res.status(404).json({ error: 'Channel not found on the server - sync its channel list.' });
+  try {
+    res.json(timeshift.state(timeshift.start(req.user.id, channelId, windowMinutes)));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/timeshift/:id', (req, res) => {
+  const session = timeshift.owned(req.user.id, req.params.id);
+  if (!session) return res.status(404).json({ error: 'No such buffer.' });
+  res.json(timeshift.state(session));
+});
+
+// GET /api/timeshift/:id/stream?from=<epoch ms> -> MPEG-TS from that moment on (the newest piece
+// when omitted), following the live edge for as long as the client reads.
+router.get('/timeshift/:id/stream', (req, res) => {
+  const session = timeshift.owned(req.user.id, req.params.id);
+  if (!session) return res.status(404).json({ error: 'No such buffer.' });
+  const from = req.query.from != null ? Number(req.query.from) : null;
+  timeshift.stream(session, Number.isFinite(from) ? from : null, req, res);
+});
+
+router.delete('/timeshift/:id', (req, res) => {
+  if (timeshift.owned(req.user.id, req.params.id)) timeshift.stop(req.params.id);
+  res.json({ ok: true });
 });
 
 // ---------- streaming ----------

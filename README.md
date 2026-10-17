@@ -278,6 +278,20 @@ Main endpoints:
 Keys can't manage API keys or reach the admin settings - those need a signed-in browser session.
 Only a SHA-256 hash of each key is stored in the database.
 
+## Live pause and rewind for DPTV-Player
+
+DPTV-Player (v2.1.5 and later) can keep its **Pause and rewind live TV** copy here instead of on the
+TV - for a Chromecast or any player with little storage. With the server set up in the player and the
+setting on, the channel you are watching is copied into 2-second pieces under
+`RECORDINGS_PATH/.timeshift/` and the player pauses, rewinds and fast-forwards through them. The server
+is then the only connection to your provider.
+
+- One channel per user: changing channel replaces the copy.
+- Pieces older than the player's rewind length are deleted as it goes; nothing is kept once the player
+  stops asking (about 90 seconds), and the folder is cleared when the container starts.
+- Endpoints (API key or session): `POST /api/timeshift` `{ channelId, windowMinutes }`,
+  `GET /api/timeshift/:id`, `GET /api/timeshift/:id/stream?from=<epoch ms>`, `DELETE /api/timeshift/:id`.
+
 ## Exposing this externally (HTTPS)
 
 See `CLOUDFLARE_TUNNEL.md` for the recommended setup (Cloudflare Tunnel with
