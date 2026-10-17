@@ -45,6 +45,8 @@ function start(userId, channelId, windowMinutes) {
     dir,
     windowMs: Math.min(Math.max(Number(windowMinutes) || 60, 5), MAX_WINDOW_MIN) * 60000,
     pieces: [],        // { file, start, dur, gapBefore }
+    done: new Set(),   // file names ffmpeg has finished (listed in a run's csv)
+    writing: 0,
     proc: null,
     run: 0,
     ext: 'ts',         // the channel's continuous .ts entry first; the HLS entry if that fails at once
@@ -78,6 +80,7 @@ function launch(session) {
     return;
   }
   const run = ++session.run;
+  session.writing = 0; // the piece ffmpeg is writing now in this run (r<run>_<writing>.ts)
   const list = path.join(session.dir, `r${run}.csv`);
   const args = [
     '-y', '-loglevel', 'error',
@@ -134,6 +137,9 @@ function launch(session) {
         gapBefore: gapPending,
       });
       gapPending = false;
+      session.done.add(file);
+      const n = Number((file.match(/_(\d+)\.ts$/) || [])[1]);
+      if (Number.isFinite(n) && run === session.run) session.writing = n + 1;
     }
     trim(session);
   }, POLL_MS);
@@ -165,6 +171,7 @@ function trim(session) {
   const oldestKept = Date.now() - session.windowMs;
   while (session.pieces.length > 1 && session.pieces[0].start + session.pieces[0].dur < oldestKept) {
     const old = session.pieces.shift();
+    session.done.delete(path.basename(old.file));
     fs.rm(old.file, { force: true }, () => {});
   }
 }
@@ -242,6 +249,78 @@ async function stream(session, fromMs, req, res) {
   }
 }
 
+// The live edge (DPTV-Player v2.1.6): the piece ffmpeg is still writing, read as it grows, then each
+// next one. Starting from the newest *finished* piece put the player a whole piece or two behind -
+// pieces end on keyframes, 5-8 s apart on many channels - which "Go live" could never make up.
+async function streamLive(session, req, res) {
+  session.touchedAt = Date.now();
+  session.readers++;
+  let gone = false;
+  req.on('close', () => { gone = true; });
+  res.on('error', () => { gone = true; });
+  res.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-cache' });
+  let run = session.run;
+  let index = session.writing;
+  try {
+    while (!gone && !session.closed) {
+      session.touchedAt = Date.now();
+      const name = `r${run}_${String(index).padStart(8, '0')}.ts`;
+      const file = path.join(session.dir, name);
+      const finished = await tailFile(session, file, name, run, res, () => gone);
+      if (gone || session.closed) break;
+      if (finished) { index++; continue; }
+      // ffmpeg reconnected: carry on with what the new run is writing.
+      run = session.run;
+      index = session.writing;
+    }
+  } catch (_) {
+    // a client that closes (a seek, a zap) ends here: normal
+  } finally {
+    session.readers--;
+    session.touchedAt = Date.now();
+    if (!res.writableEnded) res.end();
+  }
+}
+
+// Copy `file` as it grows until ffmpeg lists it as finished (true) or a newer run replaces it (false).
+async function tailFile(session, file, name, run, res, isGone) {
+  let offset = 0;
+  while (!isGone() && !session.closed) {
+    let size = -1;
+    try { size = fs.statSync(file).size; } catch (_) { /* not there yet */ }
+    if (size > offset) {
+      await pipeRange(file, offset, size - 1, res, isGone);
+      offset = size;
+      continue;
+    }
+    if (session.done.has(name)) {
+      // finished: anything written between our last look and the listing
+      try { size = fs.statSync(file).size; } catch (_) { return true; }
+      if (size > offset) { await pipeRange(file, offset, size - 1, res, isGone); }
+      return true;
+    }
+    if (session.run !== run) return false;
+    await sleep(150);
+  }
+  return true;
+}
+
+function pipeRange(file, start, end, res, isGone) {
+  return new Promise((resolve) => {
+    const input = fs.createReadStream(file, { start, end });
+    input.on('error', () => resolve());
+    input.on('data', (chunk) => {
+      if (isGone()) { input.destroy(); resolve(); return; }
+      if (!res.write(chunk)) {
+        input.pause();
+        res.once('drain', () => input.resume());
+      }
+    });
+    input.on('end', resolve);
+    input.on('close', resolve);
+  });
+}
+
 function pipeFile(file, res, isGone) {
   return new Promise((resolve) => {
     const input = fs.createReadStream(file);
@@ -260,4 +339,4 @@ function pipeFile(file, res, isGone) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-module.exports = { cleanRoot, start, stop, owned, state, stream };
+module.exports = { cleanRoot, start, stop, owned, state, stream, streamLive };
