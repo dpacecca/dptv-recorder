@@ -1,5 +1,5 @@
 # ---- build stage ----
-FROM node:20-bookworm-slim AS builder
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 # build tools for better-sqlite3 in case a prebuilt binary isn't available
@@ -13,7 +13,7 @@ COPY . .
 RUN npm install --omit=dev
 
 # ---- runtime stage ----
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg gosu tzdata \
