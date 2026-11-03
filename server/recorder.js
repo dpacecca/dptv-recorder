@@ -144,7 +144,7 @@ const RESUME_BACKOFF_MS = 4000;
 const FAST_FAIL_MS = 30000; // a live attempt that fails this soon never had a stream going
 const STALL_MS = 60000;     // an ffmpeg that writes nothing for this long is stopped and reconnected
 
-function buildFfmpegArgs(streamUrl, output, durationSec, muxer, hlsInput = true) {
+function buildFfmpegArgs(streamUrl, output, durationSec, muxer, hlsInput = true, atLiveEdge = false) {
   return [
     '-y',
     // tolerate brief network drop-outs/buffering instead of failing outright -
@@ -158,6 +158,10 @@ function buildFfmpegArgs(streamUrl, output, durationSec, muxer, hlsInput = true)
     // allowed_segment_extensions" failures. HLS-demuxer-only: a raw .ts input
     // (catch-up) rejects it outright ("Option allowed_extensions not found").
     ...(hlsInput ? ['-allowed_extensions', 'ALL'] : []),
+    // A reconnect rejoins at the newest segment. By default ffmpeg starts a live HLS playlist three
+    // segments back, which the earlier attempt had already written to this file, so every reconnect
+    // repeated those seconds in the recording (2.6.2). A raw .ts entry has no window to rejoin.
+    ...(hlsInput && atLiveEdge ? ['-live_start_index', '-1'] : []),
     '-fflags', '+genpts+discardcorrupt', // regenerate timestamps if missing/broken, and drop
                                           // individually corrupt packets instead of aborting -
                                           // live TV streams routinely have minor irregularities
@@ -186,11 +190,11 @@ function buildFfmpegArgs(streamUrl, output, durationSec, muxer, hlsInput = true)
 // whenever a resumed attempt happens to fully finish. Raw MPEG-TS has no
 // trailer/index, so appending mid-stream (even across separate ffmpeg
 // processes) is always safe.
-function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendTo, hlsInput = true) {
+function runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendTo, hlsInput = true, atLiveEdge = false) {
   return new Promise((resolve) => {
     let proc;
     try {
-      proc = spawn('ffmpeg', buildFfmpegArgs(streamUrl, appendTo ? 'pipe:1' : outputPath, durationSec, muxer, hlsInput), {
+      proc = spawn('ffmpeg', buildFfmpegArgs(streamUrl, appendTo ? 'pipe:1' : outputPath, durationSec, muxer, hlsInput, atLiveEdge), {
         stdio: appendTo ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'ignore', 'pipe'],
       });
     } catch (err) {
@@ -312,7 +316,9 @@ async function startRecording(row) {
 
     console.log(`[recorder] #${row.id} (attempt ${attempt + 1}) recording${isCatchup ? ' from the archive' : ''} "${row.program_title}" -> ${outputPath} (${durationSec}s, ${muxer})`);
     const startedAt = Date.now();
-    const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream, !isCatchup && liveExt === 'm3u8');
+    // Anything already written to the file means this attempt continues it: rejoin at the live edge.
+    const continuing = appendStream ? appendStream.bytesWritten > 0 : attempt > 0;
+    const result = await runFfmpegSegment(row, streamUrl, outputPath, durationSec, muxer, appendStream, !isCatchup && liveExt === 'm3u8', continuing);
     lastResult = result;
     if (appendStreamErr) lastResult.stderrTail = (lastResult.stderrTail || '') + '\n' + appendStreamErr;
 
