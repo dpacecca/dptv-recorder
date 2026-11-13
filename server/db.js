@@ -155,6 +155,23 @@ db.exec(`
   }
 })();
 
+// ---- migration: sign-in with DPTV-Server (2.7.0) ----
+// users.dptv_login: the DPTV-Server (XC) login this account answers to, set
+// on first sign-in or by an admin when the names differ.
+// api_keys.source: 'dptv' for keys issued by that sign-in, so they can be
+// withdrawn when the login is disabled on DPTV-Server.
+(function addDptvLink() {
+  const userCols = db.prepare('PRAGMA table_info(users)').all();
+  if (!userCols.some((c) => c.name === 'dptv_login')) {
+    db.exec('ALTER TABLE users ADD COLUMN dptv_login TEXT');
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_dptv_login ON users(dptv_login)');
+  const keyCols = db.prepare('PRAGMA table_info(api_keys)').all();
+  if (!keyCols.some((c) => c.name === 'source')) {
+    db.exec('ALTER TABLE api_keys ADD COLUMN source TEXT');
+  }
+})();
+
 function getSetting(userId, key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE user_id = ? AND key = ?').get(userId, key);
   return row ? row.value : fallback;

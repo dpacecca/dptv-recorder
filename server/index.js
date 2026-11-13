@@ -14,6 +14,7 @@ const recorder = require('./recorder');
 const timeshift = require('./timeshift');
 const { bootstrapDefaultAdmin, createSession, setSessionCookie, SESSION_COOKIE } = require('./auth');
 const cfAccess = require('./cloudflareAccess');
+const dptvLink = require('./dptvLink');
 const pkg = require('../package.json');
 
 const app = express();
@@ -90,6 +91,7 @@ function startServer() {
   bootstrapDefaultAdmin();
   timeshift.cleanRoot(); // buffers never outlive the process that was keeping them
   initScheduler();
+  dptvLink.startRecheck();
   recorder.init();
 }
 

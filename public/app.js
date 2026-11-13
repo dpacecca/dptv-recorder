@@ -1571,6 +1571,13 @@
       document.getElementById('cfTeamDomain').value = cfSettings.teamDomain || '';
       document.getElementById('cfAud').value = cfSettings.aud || '';
 
+      const dptvSettings = await api('/auth/admin/dptv-settings');
+      const dptvInput = document.getElementById('dptvServerUrl');
+      dptvInput.value = dptvSettings.serverUrl || '';
+      dptvInput.disabled = !!dptvSettings.fromEnv;
+      document.getElementById('dptvSave').disabled = !!dptvSettings.fromEnv;
+      document.getElementById('dptvError').textContent = dptvSettings.fromEnv ? 'Set by DPTV_SERVER_URL in the container config.' : '';
+
       await loadAdminUsers();
     } catch (err) {
       document.getElementById('oidcError').textContent = err.message;
@@ -1583,11 +1590,28 @@
       <div class="rec-item">
         <div class="rec-info">
           <div class="rec-title">${escapeHtml(u.first_name)} ${escapeHtml(u.last_name)} <span style="color:var(--text-faint)">— @${escapeHtml(u.username)}</span></div>
-          <div class="rec-meta">${escapeHtml(u.email)}${u.is_admin ? ' · admin' : ''}${u.oidc_subject ? ' · linked to SSO' : ''}</div>
+          <div class="rec-meta">${escapeHtml(u.email)}${u.is_admin ? ' · admin' : ''}${u.oidc_subject ? ' · linked to SSO' : ''}${u.dptv_login ? ` · DPTV-Server login: ${escapeHtml(u.dptv_login)}` : ''}</div>
         </div>
-        <div class="rec-actions"><button data-user-id="${u.id}">Delete</button></div>
+        <div class="rec-actions"><button data-link-user-id="${u.id}" data-link-login="${escapeHtml(u.dptv_login || '')}">DPTV-Server login</button><button data-user-id="${u.id}">Delete</button></div>
       </div>
     `).join('') || `<div class="recordings-empty">No other users yet.</div>`;
+
+    document.getElementById('adminUsersList').querySelectorAll('button[data-link-user-id]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const login = prompt('DPTV-Server login for this account (blank to unlink):', btn.dataset.linkLogin || '');
+        if (login === null) return;
+        try {
+          await api(`/auth/admin/users/${btn.dataset.linkUserId}/dptv-login`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ login: login.trim() }),
+          });
+          await loadAdminUsers();
+        } catch (err) {
+          document.getElementById('adminUsersError').textContent = err.message;
+        }
+      });
+    });
 
     document.getElementById('adminUsersList').querySelectorAll('button[data-user-id]').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -1645,6 +1669,24 @@
     }
   });
   document.getElementById('cfCancel').addEventListener('click', closeSettingsModal);
+
+  document.getElementById('dptvSave').addEventListener('click', async () => {
+    const errEl = document.getElementById('dptvError');
+    errEl.textContent = '';
+    try {
+      const out = await api('/auth/admin/dptv-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverUrl: document.getElementById('dptvServerUrl').value.trim() }),
+      });
+      document.getElementById('dptvServerUrl').value = out.serverUrl || '';
+      errEl.style.color = 'var(--teal)';
+      errEl.textContent = out.serverUrl ? 'Saved. Players can now sign in with their DPTV-Server login.' : 'Saved. Sign-in with DPTV-Server is off.';
+    } catch (err) {
+      errEl.style.color = '';
+      errEl.textContent = err.message;
+    }
+  });
 
   document.getElementById('newUserAdd').addEventListener('click', async () => {
     const errEl = document.getElementById('adminUsersError');

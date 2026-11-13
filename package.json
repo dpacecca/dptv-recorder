@@ -1,11 +1,12 @@
 {
   "name": "dptv-recorder",
-  "version": "2.6.2",
+  "version": "2.7.0",
   "description": "Self-hosted EPG/channel guide for Xtream Codes (XC) IPTV servers",
   "main": "server/index.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server/index.js",
+    "test": "node --test --test-force-exit test/*.test.js",
     "postinstall": "node scripts/vendor-hls.js && node scripts/vendor-mpegts.js"
   },
   "dependencies": {
