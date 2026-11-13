@@ -3,7 +3,8 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { db, getSetting, setSetting } = require('./db');
 const notifier = require('./notifier');
-const { buildStreamEntryPath, buildCatchupEntryPath } = require('./streamEntry');
+const { buildStreamEntryPath, buildCatchupEntryPath, lineStreamEntryPath, lineCatchupEntryPath } = require('./streamEntry');
+const recordingLine = require('./recordingLine');
 
 const BASE_RECORDINGS_DIR = process.env.RECORDINGS_PATH || '/recordings';
 const PORT = process.env.PORT || 3000;
@@ -250,7 +251,16 @@ function closeStream(stream) {
 
 async function startRecording(row) {
   if (activeProcs.has(row.id)) return;
+  // Taken before anything is awaited, so recordings starting together are given the line in tick()'s order.
+  const onDefault = recordingLine.claim(row.id);
+  try {
+    await recordOn(row, onDefault);
+  } finally {
+    recordingLine.release(row.id);
+  }
+}
 
+async function recordOn(row, onDefault) {
   const format = recordFormat(row.user_id);
   // "mkv_post" records as .ts throughout (so it stays watchable while still
   // recording, unlike a growing/unfinalized .mkv), then gets remuxed to a
@@ -298,6 +308,29 @@ async function startRecording(row) {
   const archiveStart = row.program_start - padBefore * 60000;
   const archiveMinutes = Math.ceil((row.program_stop + padAfter * 60000 - archiveStart) / 60000);
 
+  // The default recording line (2.8.0), when this recording holds it and the line carries the channel.
+  let line = null;
+  if (onDefault) {
+    try {
+      line = await recordingLine.lineFor(row.user_id, row.channel_id);
+    } catch (err) {
+      console.warn(`[recorder] #${row.id} the default line's channel list could not be read (${err.message}) - using the user's login`);
+    }
+    if (!line) recordingLine.release(row.id);
+  }
+  const useOwnLogin = (why) => {
+    console.log(`[recorder] #${row.id} recording with the login of the user who scheduled it${why ? ` (${why})` : ''}`);
+    line = null;
+    recordingLine.release(row.id);
+    db.prepare(`UPDATE recordings SET line='own' WHERE id=?`).run(row.id);
+  };
+  if (line) {
+    console.log(`[recorder] #${row.id} recording on the default line`);
+    db.prepare(`UPDATE recordings SET line='default' WHERE id=?`).run(row.id);
+  } else {
+    useOwnLogin(recordingLine.defaultLine() ? (onDefault ? 'the default line does not carry this channel' : 'the default line is busy with another recording') : '');
+  }
+
   while (true) {
     const durationSec = isCatchup
       ? archiveMinutes * 60 // cap at the window; an archive that keeps going past it is cut here
@@ -305,9 +338,15 @@ async function startRecording(row) {
 
     let streamPath;
     try {
-      streamPath = isCatchup
-        ? buildCatchupEntryPath(row.user_id, row.channel_id, archiveStart, archiveMinutes)
-        : buildStreamEntryPath(row.user_id, row.channel_id, liveExt); // re-resolved fresh every attempt
+      if (line) {
+        streamPath = isCatchup
+          ? lineCatchupEntryPath(line, archiveStart, archiveMinutes)
+          : lineStreamEntryPath(line, liveExt);
+      } else {
+        streamPath = isCatchup
+          ? buildCatchupEntryPath(row.user_id, row.channel_id, archiveStart, archiveMinutes)
+          : buildStreamEntryPath(row.user_id, row.channel_id, liveExt); // re-resolved fresh every attempt
+      }
     } catch (err) {
       lastResult = { code: -1, stderrTail: err.message };
       break;
@@ -331,6 +370,11 @@ async function startRecording(row) {
     }
 
     const fastFail = result.code !== 0 && Date.now() - startedAt < FAST_FAIL_MS;
+    // The default line refused at once (its one connection taken elsewhere): the user's own login instead.
+    if (line && fastFail && !(appendStream && appendStream.bytesWritten > 0)) {
+      useOwnLogin(`the default line failed at once, code ${result.code}`);
+      continue;
+    }
     if (!isCatchup && liveExt === 'm3u8' && !tsFallbackUsed && (fastFail || result.stalled)) {
       console.warn(`[recorder] #${row.id} the HLS entry ${result.stalled ? 'stalled' : 'failed at once'} (code ${result.code}) - retrying on the channel's .ts stream`);
       liveExt = 'ts';
@@ -444,7 +488,8 @@ function deleteRecording(userId, id) {
 // ---------------- ticker ----------------
 function tick() {
   const now = Date.now();
-  const due = db.prepare(`SELECT * FROM recordings WHERE status='scheduled' AND rec_start <= ?`).all(now);
+  // Oldest first: when several start together the one scheduled first gets the default recording line.
+  const due = db.prepare(`SELECT * FROM recordings WHERE status='scheduled' AND rec_start <= ? ORDER BY created_at ASC, id ASC`).all(now);
   due.forEach(startRecording);
 
   // safety net: if something is still marked "recording" well past its end time

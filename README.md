@@ -55,6 +55,23 @@ program title alone (not the channel name too), since some providers embed
 the event name directly in the channel name for PPV/event channels, which
 made the old channel+title filename redundant.
 
+### Default recording line (2.8.0)
+
+If your provider gives you a line just for recording, or allows one connection per line, set it once in
+**Admin → Default recording line** (XC server, username, password; checked before it's saved). Every
+recording then uses it, whoever scheduled it:
+
+- Only one recording is on the default line at a time. A recording that starts while another is on it
+  uses the login of the user who scheduled it instead - their own line, which most providers let them
+  watch on while it records. When two start together, the one scheduled first gets the default line.
+- If the default line refuses at once (its connection is taken elsewhere), that recording moves to the
+  user's own login.
+- Channels are matched to the default line by EPG ID, then by name, when it is on another server than
+  the user's own (e.g. users on DPTV-Server, the default line straight on the provider). A channel it
+  doesn't carry is recorded with the user's login.
+- Each recording shows which it used: "default line" or "your login". Leave the server blank to turn
+  it off. The password is never logged or shown again.
+
 ### Catch-up (recording programmes that already aired)
 
 Scheduling a programme that has **already finished** records it from your provider's archive

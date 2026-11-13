@@ -172,6 +172,16 @@ db.exec(`
   }
 })();
 
+// ---- migration: recordings.line (2.8.0) ----
+// Which login a recording was made with: 'default' (the shared recording
+// line) or 'own' (the login of the user who scheduled it).
+(function addRecordingLine() {
+  const cols = db.prepare('PRAGMA table_info(recordings)').all();
+  if (!cols.some((c) => c.name === 'line')) {
+    db.exec('ALTER TABLE recordings ADD COLUMN line TEXT');
+  }
+})();
+
 function getSetting(userId, key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE user_id = ? AND key = ?').get(userId, key);
   return row ? row.value : fallback;
