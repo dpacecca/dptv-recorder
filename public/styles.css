@@ -59,11 +59,14 @@ header{
 .brand h1{
   font-family:var(--font-display);
   font-weight:600;
-  font-size:22px;
-  letter-spacing:0.5px;
+  font-size:24px;
+  letter-spacing:1px;
   text-transform:uppercase;
 }
 .brand h1 span{color:var(--amber);}
+/* The family lockup (DPTV-Player, DPTV-Server, DPTV Web): the tile, then "DPTV RECORDER". */
+.brand-logo{ width:30px; height:30px; display:block; }
+.auth-logo{ width:64px; height:64px; display:block; margin:0 auto -4px; }
 .sync-bar{ display:flex; align-items:center; gap:14px; }
 .sync-status{ display:flex; flex-direction:column; align-items:flex-end; line-height:1.3; }
 .sync-status .label{ font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--text-faint); }
@@ -72,14 +75,14 @@ header{
 .sync-status .value.error{color:var(--live);}
 select#autoSync{
   background:var(--panel-2); color:var(--text); border:1px solid var(--border);
-  border-radius:6px; padding:7px 10px; font-family:var(--font-mono); font-size:12px; cursor:pointer;
+  border-radius:10px; padding:7px 10px; font-family:var(--font-mono); font-size:12px; cursor:pointer;
 }
 select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px solid var(--amber); outline-offset:1px; }
 #syncBtn{
   display:flex; align-items:center; gap:8px;
   background:var(--amber); color:#1a1305; border:none; font-weight:700;
   font-family:var(--font-body); font-size:12px; text-transform:uppercase; letter-spacing:0.5px;
-  padding:9px 16px; border-radius:6px; cursor:pointer; transition:filter .15s;
+  padding:9px 16px; border-radius:10px; cursor:pointer; transition:filter .15s;
 }
 #syncBtn:hover{filter:brightness(1.1);}
 #syncBtn:disabled{opacity:.6; cursor:not-allowed;}
@@ -91,7 +94,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 @keyframes spin{to{transform:rotate(360deg);}}
 #settingsBtn{
   background:var(--panel-2); color:var(--text-dim); border:1px solid var(--border);
-  border-radius:6px; width:34px; height:34px; font-size:15px; cursor:pointer;
+  border-radius:10px; width:34px; height:34px; font-size:15px; cursor:pointer;
 }
 #settingsBtn:hover{ color:var(--text); border-color:var(--amber); }
 .version-badge{
@@ -101,7 +104,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 #recordingsBtn{
   position:relative;
   background:var(--panel-2); color:var(--text-dim); border:1px solid var(--border);
-  border-radius:6px; height:34px; padding:0 10px; font-size:14px; cursor:pointer;
+  border-radius:10px; height:34px; padding:0 10px; font-size:14px; cursor:pointer;
   display:flex; align-items:center; gap:4px;
 }
 #recordingsBtn:hover{ color:var(--live); border-color:var(--live); }
@@ -118,24 +121,24 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .categories{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; min-width:0; max-width:340px; overflow:hidden; }
 .categories .cat-search{ padding:14px; border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center; }
 .categories .cat-search input{
-  flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+  flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
   padding:8px 10px; color:var(--text); font-size:13px;
 }
 .collapse-btn{
   flex-shrink:0; background:var(--panel-2); border:1px solid var(--border); color:var(--text-dim);
-  border-radius:6px; width:34px; height:34px; cursor:pointer; font-size:12px;
+  border-radius:10px; width:34px; height:34px; cursor:pointer; font-size:12px;
 }
 .collapse-btn:hover{ color:var(--amber); border-color:var(--amber); }
 .expand-btn{
   position:absolute; left:8px; top:12px; z-index:10;
   background:var(--panel-2); border:1px solid var(--border); color:var(--text-dim);
-  border-radius:6px; width:34px; height:34px; cursor:pointer; font-size:12px;
+  border-radius:10px; width:34px; height:34px; cursor:pointer; font-size:12px;
 }
 .expand-btn:hover{ color:var(--amber); border-color:var(--amber); }
 .cat-list{ flex:1; overflow-y:auto; padding:8px; }
 .cat-item{
   display:flex; align-items:center; justify-content:space-between;
-  padding:10px 12px; border-radius:6px; cursor:pointer; color:var(--text-dim);
+  padding:10px 12px; border-radius:10px; cursor:pointer; color:var(--text-dim);
   font-size:14px; margin-bottom:2px; transition:background .12s, color .12s;
 }
 .cat-item:hover{background:var(--panel-2); color:var(--text);}
@@ -173,7 +176,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .record-btn{
   display:flex; align-items:center; gap:7px;
   font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
-  padding:9px 16px; border-radius:6px; cursor:pointer; border:1px solid var(--border);
+  padding:9px 16px; border-radius:10px; cursor:pointer; border:1px solid var(--border);
   background:var(--panel-2); color:var(--text);
 }
 .record-btn .rec-dot{ width:9px; height:9px; border-radius:50%; background:var(--live); }
@@ -246,7 +249,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 }
 .fullscreen-btn{
   position:absolute; top:10px; right:10px; z-index:4;
-  width:34px; height:34px; border-radius:6px; border:1px solid var(--border);
+  width:34px; height:34px; border-radius:10px; border:1px solid var(--border);
   background:rgba(11,13,18,0.75); color:var(--text); cursor:pointer;
   display:flex; align-items:center; justify-content:center;
 }
@@ -258,7 +261,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .epg-controls{ display:flex; align-items:center; gap:14px; padding:10px 16px; border-bottom:1px solid var(--border); background:var(--panel); }
 .epg-controls .search-wrap{ flex:1; max-width:340px; position:relative; }
 .epg-controls input[type=text]{
-  width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+  width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
   padding:8px 10px 8px 30px; color:var(--text); font-size:13px;
 }
 .epg-controls .search-wrap svg{
@@ -283,7 +286,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 
 .day-chips{ display:flex; gap:6px; overflow-x:auto; }
 .day-chip{
-  font-family:var(--font-mono); font-size:11px; padding:7px 12px; border-radius:6px;
+  font-family:var(--font-mono); font-size:11px; padding:7px 12px; border-radius:10px;
   background:var(--panel-2); border:1px solid var(--border); color:var(--text-dim);
   cursor:pointer; white-space:nowrap; text-align:center; line-height:1.3;
 }
@@ -292,11 +295,11 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .day-chip.active .dow{color:#4a3712;}
 .jump-now{
   font-family:var(--font-mono); font-size:11px; color:var(--teal); border:1px solid var(--teal);
-  background:transparent; padding:7px 10px; border-radius:6px; cursor:pointer; white-space:nowrap;
+  background:transparent; padding:7px 10px; border-radius:10px; cursor:pointer; white-space:nowrap;
 }
 .view-toggle{
   font-family:var(--font-mono); font-size:11px; color:var(--text-dim); border:1px solid var(--border);
-  background:var(--panel-2); padding:7px 10px; border-radius:6px; cursor:pointer; white-space:nowrap;
+  background:var(--panel-2); padding:7px 10px; border-radius:10px; cursor:pointer; white-space:nowrap;
 }
 .view-toggle:hover{ border-color:var(--amber); color:var(--amber); }
 
@@ -335,7 +338,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .epg-track{ position:relative; height:64px; background-image: repeating-linear-gradient(90deg, transparent 0 149px, var(--border) 149px 150px); }
 .epg-prog{
   position:absolute; top:6px; bottom:6px; background:var(--panel-2); border:1px solid var(--border);
-  border-radius:6px; padding:6px 8px; overflow:hidden; cursor:pointer; transition:border-color .12s, background .12s;
+  border-radius:10px; padding:6px 8px; overflow:hidden; cursor:pointer; transition:border-color .12s, background .12s;
 }
 .epg-prog:hover{border-color:var(--amber); background:#232a35;}
 .epg-prog.selected{ border-color:var(--amber); background:rgba(242,169,59,0.14); box-shadow:0 0 0 1px var(--amber); }
@@ -405,7 +408,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .modal h2{ font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.5px; font-size:20px; }
 .modal label{ font-size:12px; color:var(--text-dim); display:flex; flex-direction:column; gap:6px; }
 .modal input, .modal select{
-  background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:9px 10px;
+  background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:9px 10px;
   color:var(--text); font-size:13px; margin-top:4px;
 }
 .modal-error{ color:var(--live); font-size:12px; min-height:16px; }
@@ -414,7 +417,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .modal-actions{ display:flex; justify-content:flex-end; gap:10px; }
 .btn-primary, .btn-secondary{
   font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
-  padding:9px 16px; border-radius:6px; cursor:pointer; border:none;
+  padding:9px 16px; border-radius:10px; cursor:pointer; border:none;
 }
 .btn-primary{ background:var(--amber); color:#1a1305; }
 .btn-primary:disabled{ opacity:.6; cursor:not-allowed; }
@@ -435,14 +438,14 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .epg-source-list{ display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto; }
 .epg-source-item{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
-  background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:8px 12px;
+  background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:8px 12px;
 }
 .epg-source-item .es-info{ min-width:0; display:flex; flex-direction:column; gap:2px; }
 .epg-source-item .es-name{ font-size:12.5px; color:var(--text); }
 .epg-source-item .es-url{ font-size:10.5px; color:var(--text-faint); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:320px; }
 .epg-source-item button{
   font-size:11px; font-family:var(--font-mono); background:var(--bg); border:1px solid var(--border);
-  color:var(--text-dim); border-radius:6px; padding:5px 9px; cursor:pointer; flex-shrink:0;
+  color:var(--text-dim); border-radius:10px; padding:5px 9px; cursor:pointer; flex-shrink:0;
 }
 .epg-source-item button:hover{ border-color:var(--live); color:var(--live); }
 .epg-source-add{ display:flex; gap:8px; flex-wrap:wrap; }
@@ -450,7 +453,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px;
 }
 .admin-user-add input{
-  background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+  background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
   padding:9px 10px; color:var(--text); font-size:13px; min-width:0;
 }
 .admin-user-add button{ grid-column:1 / -1; }
@@ -460,12 +463,12 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .api-key-new-row input{ font-family:var(--font-mono); font-size:12px; }
 #newUserPassword{ grid-column:1 / -1; }
 .epg-source-add input{
-  flex:1; min-width:140px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+  flex:1; min-width:140px; background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
   padding:9px 10px; color:var(--text); font-size:13px;
 }
 .epg-source-add button{ flex-shrink:0; }
 #epgSourceSelect{
-  background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:9px 10px;
+  background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:9px 10px;
   color:var(--text); font-size:13px; margin-top:4px;
 }
 
@@ -501,7 +504,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .rec-item .rec-actions{ display:flex; gap:8px; flex-shrink:0; }
 .rec-item button{
   font-size:11px; font-family:var(--font-mono); background:var(--bg); border:1px solid var(--border);
-  color:var(--text-dim); border-radius:6px; padding:6px 10px; cursor:pointer;
+  color:var(--text-dim); border-radius:10px; padding:6px 10px; cursor:pointer;
 }
 .rec-item button:hover{ border-color:var(--live); color:var(--live); }
 .recordings-empty{ color:var(--text-faint); font-size:13px; text-align:center; padding:30px; }
@@ -516,19 +519,19 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   padding:32px; display:flex; flex-direction:column; gap:14px;
 }
 .auth-card h1{
-  font-family:var(--font-display); font-size:28px; text-transform:uppercase; letter-spacing:0.5px;
+  font-family:var(--font-display); font-weight:600; font-size:34px; text-transform:uppercase; letter-spacing:0.5px;
   text-align:center; margin-bottom:6px;
 }
 .auth-card h1 span{ color:var(--amber); }
 .auth-card label{ font-size:12px; color:var(--text-dim); display:flex; flex-direction:column; gap:6px; }
 .auth-card input{
-  background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:10px 12px;
+  background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px;
   color:var(--text); font-size:14px; margin-top:4px;
 }
 .auth-card button{ margin-top:4px; width:100%; }
 #userMenuBtn{
   background:var(--panel-2); border:1px solid var(--border); color:var(--text-dim);
-  border-radius:6px; height:34px; padding:0 12px; font-size:12px; cursor:pointer;
+  border-radius:10px; height:34px; padding:0 12px; font-size:12px; cursor:pointer;
 }
 #userMenuBtn:hover{ color:var(--text); border-color:var(--amber); }
 

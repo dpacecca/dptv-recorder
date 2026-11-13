@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#171C24"/>
+      <stop offset="100%" stop-color="#0B0D12"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="60%">
+      <stop offset="0%" stop-color="#F2A93B" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#F2A93B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="play" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFC670"/>
+      <stop offset="100%" stop-color="#EE9A22"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect x="0" y="0" width="256" height="256" rx="52" fill="url(#bg)"/>
+  <rect x="4" y="4" width="248" height="248" rx="48" fill="none" stroke="#2A313D" stroke-width="2"/>
+
+  <!-- ambient glow -->
+  <circle cx="128" cy="112" r="120" fill="url(#glow)"/>
+
+  <!-- play triangle -->
+  <path d="M 96 74 L 178 128 L 96 182 Z" fill="url(#play)" stroke="#7A5A20" stroke-width="3" stroke-linejoin="round"/>
+
+  <!-- record dot badge -->
+  <circle cx="188" cy="70" r="30" fill="#0B0D12"/>
+  <circle cx="188" cy="70" r="24" fill="#E2495A"/>
+  <circle cx="188" cy="70" r="24" fill="none" stroke="#FF7D8A" stroke-width="2" opacity="0.6"/>
+</svg>
