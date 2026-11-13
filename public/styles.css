@@ -136,27 +136,26 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 }
 .expand-btn:hover{ color:var(--amber); border-color:var(--amber); }
 .cat-list{ flex:1; overflow-y:auto; padding:8px; }
+/* DPTV Web's category list: a quiet row, the chosen one marked by an accent bar and accent text. */
 .cat-item{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:10px 12px; border-radius:10px; cursor:pointer; color:var(--text-dim);
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:8px 10px; min-height:36px; border-radius:8px; cursor:pointer; color:#C9D0D9;
   font-size:14px; margin-bottom:2px; transition:background .12s, color .12s;
 }
-.cat-item:hover{background:var(--panel-2); color:var(--text);}
-.cat-item.active{
-  background:linear-gradient(90deg, rgba(242,169,59,0.15), transparent);
-  color:var(--text); border-left:3px solid var(--amber); padding-left:9px;
-}
-.cat-item .count{
-  font-family:var(--font-mono); font-size:11px; color:var(--text-faint);
-  background:var(--bg); padding:2px 6px; border-radius:10px;
-}
+.cat-item .cat-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.cat-item:hover{ background:var(--panel-2); color:var(--text); }
+.cat-item.active{ background:var(--panel-2); color:var(--amber); box-shadow:inset 3px 0 0 var(--amber); }
+.cat-item .count{ flex:none; font:500 11px var(--font-mono); color:var(--text-faint); font-variant-numeric:tabular-nums; }
+.cat-item.active .count{ color:var(--text-dim); }
 .empty-hint{ color:var(--text-faint); font-size:12.5px; padding:20px; text-align:center; line-height:1.5; }
 
 /* ---------- RIGHT SIDE ---------- */
 .right{ display:grid; grid-template-rows: 1fr 2fr; min-height:0; min-width:0; }
 
 .detail-row{ display:grid; grid-template-columns: 1fr 1fr; border-bottom:1px solid var(--border); min-height:0; }
-.synopsis{ background:var(--panel); border-right:1px solid var(--border); padding:18px 22px; overflow-y:auto; min-height:0; min-width:0; }
+/* Preview on the left, the programme on the right, as in DPTV-Player and DPTV Web. */
+.detail-row .preview{ order:-1; }
+.synopsis{ background:var(--panel); border-left:1px solid var(--border); padding:18px 22px; overflow-y:auto; min-height:0; min-width:0; }
 .synopsis .placeholder{
   height:100%; display:flex; align-items:center; justify-content:center;
   color:var(--text-faint); font-size:13px; text-align:center; padding:20px;
@@ -595,8 +594,10 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
      on a phone and needs the vertical room, not this panel. */
   .right{ grid-template-rows: auto auto; }
   .detail-row{ grid-template-columns: 1fr; grid-template-rows: auto minmax(120px, 20vh); }
+  /* phones keep the programme above the preview: the guide below needs the room */
+  .detail-row .preview{ order:0; }
   .synopsis{
-    border-right:none; border-bottom:1px solid var(--border); padding:10px 16px 10px 56px;
+    border-left:none; border-bottom:1px solid var(--border); padding:10px 16px 10px 56px;
     /* a floor, not just a vh-scaled cap: content height here is driven by
        font size, not viewport height, so a pure "Xvh" cap clips the record
        button on shorter phones even though it fit on a taller one */
