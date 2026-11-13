@@ -114,8 +114,39 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 }
 
 /* ---------- MAIN LAYOUT ---------- */
-.main{ flex:1; display:grid; grid-template-columns: minmax(200px, max-content) 1fr; min-height:0; min-width:0; position:relative; transition:grid-template-columns 0.2s ease; }
-.main.categories-collapsed{ grid-template-columns: 0px 1fr; }
+.main{ flex:1; display:grid; grid-template-columns: 220px minmax(200px, max-content) 1fr; min-height:0; min-width:0; position:relative; transition:grid-template-columns 0.2s ease; }
+.main.categories-collapsed{ grid-template-columns: 220px 0px 1fr; }
+
+/* ---------- left menu, as DPTV-Server's: Recorder first, then the settings pages ---------- */
+.side-nav{
+  background:var(--panel); border-right:1px solid var(--border); padding:12px 10px;
+  display:flex; flex-direction:column; gap:4px; overflow-y:auto; min-height:0;
+}
+.side-nav-item{
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  padding:10px 12px; border-radius:10px; border:none; background:none; cursor:pointer;
+  color:var(--text); font-family:var(--font-display); font-weight:600; font-size:17px;
+  letter-spacing:.5px; text-transform:uppercase; white-space:nowrap;
+}
+.side-nav-item svg{ width:20px; height:20px; flex:none; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.side-nav-item:hover{ background:var(--panel-2); }
+.side-nav-item.active{ background:var(--amber); color:#1a1305; }
+/* Recorder on top, set apart from the settings below it */
+.side-nav-item[data-nav="recorder"]{ margin-bottom:8px; }
+.side-nav-item[data-nav="recorder"]::after{ content:none; }
+
+/* Settings open as a full page right of the menu (placed by app.js), not a pop-up. */
+#settingsModal{
+  inset:auto; top:var(--page-top, 56px); left:var(--page-left, 220px); right:0; bottom:0;
+  background:var(--bg); align-items:stretch; justify-content:flex-start; z-index:40;
+}
+#settingsModal .modal.modal-wide{
+  width:100%; max-width:none; max-height:none; height:100%; border:none; border-radius:0;
+  background:var(--bg); padding:24px 32px 40px; overflow-y:auto;
+}
+#settingsModal .modal-tabs{ display:none; }
+#settingsModal .page-title{ font:600 26px var(--font-display); letter-spacing:.5px; text-transform:uppercase; margin-bottom:4px; }
+#settingsModal .modal-tab-panel{ max-width:760px; }
 
 /* ---------- LEFT: CATEGORIES ---------- */
 .categories{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; min-width:0; max-width:340px; overflow:hidden; }
@@ -567,6 +598,12 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
      the collapsed/expanded state is expressed visually. */
   .main{ grid-template-columns: 1fr; }
   .main.categories-collapsed{ grid-template-columns: 1fr; }
+  /* phones: no menu column; the header's buttons open the settings pages, full screen */
+  .side-nav{ display:none; }
+  #settingsModal{ left:0; }
+  #settingsModal .modal.modal-wide{ padding:16px; }
+  #settingsModal .modal-tabs{ display:flex; }
+  #settingsModal .page-title{ display:none; }
   .categories{
     position:fixed; top:0; left:0; bottom:0; z-index:60;
     width:85vw; max-width:340px; height:100vh;
@@ -652,4 +689,10 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   .day-chips{ order:2; }
   .jump-now{ order:3; }
   .view-toggle{ order:4; }
+}
+
+/* Wider screens reach Settings and Account from the left menu; the header keeps them on phones. */
+@media (min-width: 861px) {
+  #settingsBtn, #userMenuBtn{ display:none; }
+  .expand-btn{ left:228px; }
 }
