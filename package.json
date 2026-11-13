@@ -1,6 +1,6 @@
 {
   "name": "dptv-recorder",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "description": "Self-hosted EPG/channel guide for Xtream Codes (XC) IPTV servers",
   "main": "server/index.js",
   "type": "commonjs",
