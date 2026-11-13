@@ -6,6 +6,10 @@
 <title>DPTV Recorder</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="theme-color" content="#0F1319">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,7 +17,8 @@
 <!-- login screen -->
 <div class="auth-screen" id="loginScreen" style="display:none">
   <div class="auth-card">
-    <h1>DPTV<span>Recorder</span></h1>
+    <img class="auth-logo" src="logo.svg" alt="">
+    <h1>DPTV <span>Recorder</span></h1>
     <div id="localLoginFields">
       <label>Username<br><input type="text" id="loginUsername" autocomplete="username"></label>
       <label>Password<br><input type="password" id="loginPassword" autocomplete="current-password"></label>
@@ -42,8 +47,9 @@
 
 <header id="appHeader" style="display:none">
   <div class="brand">
-    <span class="dot" id="statusDot"></span>
-    <h1>DPTV<span>Recorder</span></h1>
+    <img class="brand-logo" src="logo.svg" alt="">
+    <h1>DPTV <span>Recorder</span></h1>
+    <span class="dot" id="statusDot" title="Connection to your XC server"></span>
   </div>
   <div class="sync-bar">
     <div class="sync-status">
