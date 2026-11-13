@@ -809,7 +809,6 @@
     const next = progs.filter((p) => p.start >= prog.stop).sort((a, b) => a.start - b.start)[0];
     const initials = escapeHtml((channel.name || '?').slice(0, 2).toUpperCase());
     els.synopsisPanel.innerHTML = `
-      <div class="tags">${isLive ? '<span class="tag live">LIVE</span>' : ''}</div>
       <div class="info-title" title="${escapeAttr(prog.title)}">${escapeHtml(prog.title)}</div>
       <div class="info-time"><span class="mono">${fmtTime(prog.start)} – ${fmtTime(prog.stop)}</span>${isLive
         ? `<span class="progress"><span style="width:${pct.toFixed(1)}%"></span></span><span class="mono left">${fmtDur((prog.stop - now) / 60000)} left</span>`
