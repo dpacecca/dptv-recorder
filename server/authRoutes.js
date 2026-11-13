@@ -3,6 +3,7 @@ const auth = require('./auth');
 const oidc = require('./oidc');
 const cfAccess = require('./cloudflareAccess');
 const dptv = require('./dptvLink');
+const recordingLine = require('./recordingLine');
 const { getSystemSetting, setSystemSetting } = require('./db');
 
 const router = express.Router();
@@ -202,6 +203,20 @@ router.post('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireS
   if (aud !== undefined) setSystemSetting('cf_access_aud', aud);
   cfAccess.resetCache();
   res.json({ ok: true });
+});
+
+// ---------------- admin: default recording line ----------------
+router.get('/admin/recording-line', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
+  res.json(recordingLine.describe());
+});
+
+router.post('/admin/recording-line', auth.requireAuth, auth.requireSession, auth.requireAdmin, async (req, res) => {
+  try {
+    await recordingLine.save(req.body || {});
+    res.json({ ok: true, ...recordingLine.describe() });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // ---------------- admin: DPTV-Server ----------------

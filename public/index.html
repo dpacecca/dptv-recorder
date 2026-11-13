@@ -302,6 +302,18 @@
         <button id="cfSave" class="btn-primary">Save Cloudflare Access settings</button>
       </div>
 
+      <div class="modal-hint" style="margin-top:14px"><strong>Default recording line</strong></div>
+      <div class="modal-hint">One XC login every recording uses, whoever scheduled it. Only one recording is on it at a
+        time: a recording that starts while another is on it uses the login of the user who scheduled it (when two start
+        together, the one scheduled later). Leave the server blank to record with each user's own login.</div>
+      <label>XC server<br><input type="text" id="lineHost" placeholder="http://provider.example:8080 (blank: off)"></label>
+      <label>Username<br><input type="text" id="lineUsername" autocomplete="off"></label>
+      <label>Password<br><input type="password" id="linePassword" autocomplete="new-password"></label>
+      <div class="modal-error" id="lineError"></div>
+      <div class="modal-actions">
+        <button id="lineSave" class="btn-primary">Save default line</button>
+      </div>
+
       <div class="modal-hint" style="margin-top:14px"><strong>DPTV-Server</strong></div>
       <div class="modal-hint">Trust a DPTV-Server: anyone with a login there can sign DPTV-Player and DPTV Web in to
         this recorder with it, with no API key to copy. Their recorder account is made the first time they sign in,

@@ -42,4 +42,15 @@ function buildCatchupEntryPath(userId, channelId, startMs, durationMin) {
   return tsProxyPathFor(xc.timeshiftUrl(host, username, password, channel.id, startMs, durationMin));
 }
 
-module.exports = { buildStreamEntryPath, buildCatchupEntryPath };
+// The same two entries on a given line (the default recording line, 2.8.0)
+// rather than the user's own login: line = { host, username, password, streamId }.
+function lineStreamEntryPath(line, ext = 'm3u8') {
+  const upstreamUrl = xc.liveStreamUrl(line.host, line.username, line.password, line.streamId, ext);
+  return ext === 'ts' ? tsProxyPathFor(upstreamUrl) : proxyPathFor(upstreamUrl, ext);
+}
+
+function lineCatchupEntryPath(line, startMs, durationMin) {
+  return tsProxyPathFor(xc.timeshiftUrl(line.host, line.username, line.password, line.streamId, startMs, durationMin));
+}
+
+module.exports = { buildStreamEntryPath, buildCatchupEntryPath, lineStreamEntryPath, lineCatchupEntryPath };

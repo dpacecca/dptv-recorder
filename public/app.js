@@ -872,7 +872,7 @@
           ${left}
           <div class="rec-info">
             <div class="rec-title">${escapeHtml(r.program_title)} <span style="color:var(--text-faint)">— ${escapeHtml(r.channel_name)}</span></div>
-            <div class="rec-meta">${fmtTime(r.rec_start)} – ${fmtTime(r.rec_end)}</div>
+            <div class="rec-meta">${fmtTime(r.rec_start)} – ${fmtTime(r.rec_end)}${r.line === 'default' ? ' · default line' : r.line === 'own' ? ' · your login' : ''}</div>
             ${r.error ? `<div class="rec-error">${escapeHtml(r.error)}</div>` : ''}
           </div>
           <span class="rec-status ${r.status}">${r.status}</span>
@@ -1571,6 +1571,12 @@
       document.getElementById('cfTeamDomain').value = cfSettings.teamDomain || '';
       document.getElementById('cfAud').value = cfSettings.aud || '';
 
+      const lineSettings = await api('/auth/admin/recording-line');
+      document.getElementById('lineHost').value = lineSettings.host || '';
+      document.getElementById('lineUsername').value = lineSettings.username || '';
+      document.getElementById('linePassword').value = '';
+      document.getElementById('linePassword').placeholder = lineSettings.hasPassword ? '(leave blank to keep the current password)' : 'password';
+
       const dptvSettings = await api('/auth/admin/dptv-settings');
       const dptvInput = document.getElementById('dptvServerUrl');
       dptvInput.value = dptvSettings.serverUrl || '';
@@ -1669,6 +1675,29 @@
     }
   });
   document.getElementById('cfCancel').addEventListener('click', closeSettingsModal);
+
+  document.getElementById('lineSave').addEventListener('click', async () => {
+    const errEl = document.getElementById('lineError');
+    errEl.textContent = '';
+    try {
+      const out = await api('/auth/admin/recording-line', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: document.getElementById('lineHost').value.trim(),
+          username: document.getElementById('lineUsername').value.trim(),
+          password: document.getElementById('linePassword').value,
+        }),
+      });
+      document.getElementById('linePassword').value = '';
+      document.getElementById('linePassword').placeholder = out.hasPassword ? '(leave blank to keep the current password)' : 'password';
+      errEl.style.color = 'var(--teal)';
+      errEl.textContent = out.configured ? 'Saved. Recordings now use this line first.' : 'Saved. Recordings use each user\'s own login.';
+    } catch (err) {
+      errEl.style.color = '';
+      errEl.textContent = err.message;
+    }
+  });
 
   document.getElementById('dptvSave').addEventListener('click', async () => {
     const errEl = document.getElementById('dptvError');
