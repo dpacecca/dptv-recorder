@@ -802,14 +802,36 @@
 
     state.currentProgram = { channel, prog };
 
+    // Laid out as DPTV Web's now-playing panel: tags, title, time with progress, channel, description, next, actions.
+    const now = Date.now();
+    const pct = isLive ? Math.min(100, Math.max(0, ((now - prog.start) / (prog.stop - prog.start)) * 100)) : 0;
+    const progs = (state.epgProgramsMap || {})[channel.id] || [];
+    const next = progs.filter((p) => p.start >= prog.stop).sort((a, b) => a.start - b.start)[0];
+    const initials = escapeHtml((channel.name || '?').slice(0, 2).toUpperCase());
     els.synopsisPanel.innerHTML = `
-      <div class="prog-meta">${isLive ? '<span class="live-tag">LIVE</span>' : ''}<span>${fmtTime(prog.start)} – ${fmtTime(prog.stop)}</span><span class="chan">on ${escapeHtml(channel.name)}</span></div>
-      <div class="prog-title">${escapeHtml(prog.title)}</div>
-      <div class="prog-desc">${escapeHtml(prog.description || 'No synopsis provided by your provider for this program.')}</div>
-      <div class="record-control" id="recordControl">
-        <button class="record-btn state-idle" id="recordBtn" disabled>Loading...</button>
+      <div class="tags">${isLive ? '<span class="tag live">LIVE</span>' : ''}</div>
+      <div class="info-title" title="${escapeAttr(prog.title)}">${escapeHtml(prog.title)}</div>
+      <div class="info-time"><span class="mono">${fmtTime(prog.start)} – ${fmtTime(prog.stop)}</span>${isLive
+        ? `<span class="progress"><span style="width:${pct.toFixed(1)}%"></span></span><span class="mono left">${fmtDur((prog.stop - now) / 60000)} left</span>`
+        : ''}</div>
+      <div class="info-channel">
+        <span class="logo-tile">${channel.logo ? `<img src="${escapeAttr(channel.logo)}" alt="" onerror="this.remove()">` : initials}</span>
+        <span class="info-channel-name">${channel.stream_num ? `<b class="mono">${escapeHtml(String(channel.stream_num))}</b> ` : ''}${escapeHtml(channel.name)}</span>
+      </div>
+      <p class="desc">${escapeHtml(prog.description || 'No synopsis provided by your provider for this program.')}</p>
+      ${next ? `<div class="info-next"><span class="mono">Next ${fmtTime(next.start)}</span> · ${escapeHtml(next.title)}</div>` : ''}
+      <div class="actions">
+        <button class="btn-fullscreen" id="infoFullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Full screen</button>
+        <div class="record-control" id="recordControl">
+          <button class="record-btn state-idle" id="recordBtn" disabled>Loading...</button>
+        </div>
       </div>
     `;
+    document.getElementById('infoFullscreen').addEventListener('click', () => {
+      if (!els.previewPanel.classList.contains('playing')) startPreview();
+      if (els.previewVideo.requestFullscreen) els.previewVideo.requestFullscreen().catch(() => {});
+      else if (els.previewVideo.webkitEnterFullscreen) els.previewVideo.webkitEnterFullscreen();
+    });
     refreshRecordButton(channel, prog);
 
     selectChannelForPreview(channel);

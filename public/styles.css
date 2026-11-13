@@ -114,7 +114,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 }
 
 /* ---------- MAIN LAYOUT ---------- */
-.main{ flex:1; display:grid; grid-template-columns: minmax(200px, max-content) 1fr; min-height:0; min-width:0; position:relative; transition:grid-template-columns 0.2s ease; }
+.main{ flex:1; display:grid; grid-template-columns: 270px 1fr; min-height:0; min-width:0; position:relative; transition:grid-template-columns 0.2s ease; }
 .main.categories-collapsed{ grid-template-columns: 0px 1fr; }
 
 /* ---------- Recorder / Settings tabs in the header, as DPTV Web's Live TV / DVR ---------- */
@@ -169,7 +169,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 #settingsModal .modal-tab-panel{ max-width:760px; }
 
 /* ---------- LEFT: CATEGORIES ---------- */
-.categories{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; min-width:0; max-width:340px; overflow:hidden; }
+.categories{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden; }
 .categories .cat-search{ padding:14px; border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center; }
 .categories .cat-search input{
   flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
@@ -201,37 +201,56 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .empty-hint{ color:var(--text-faint); font-size:12.5px; padding:20px; text-align:center; line-height:1.5; }
 
 /* ---------- RIGHT SIDE ---------- */
-.right{ display:grid; grid-template-rows: 1fr 2fr; min-height:0; min-width:0; }
+/* The preview and programme take a third of the height plus one guide row (72 px). */
+.right{ display:grid; grid-template-rows: calc(33.333% + 72px) minmax(0, 1fr); min-height:0; min-width:0; }
 
-.detail-row{ display:grid; grid-template-columns: 1fr 1fr; border-bottom:1px solid var(--border); min-height:0; }
+/* As DPTV Web: a 16:9 preview as tall as the row, then the programme beside it. */
+.detail-row{ display:flex; gap:22px; padding:16px 20px; border-bottom:1px solid var(--border); min-height:0; background:var(--bg); }
 /* Preview on the left, the programme on the right, as in DPTV-Player and DPTV Web. */
 .detail-row .preview{ order:-1; }
-.synopsis{ background:var(--panel); border-left:1px solid var(--border); padding:18px 22px; overflow-y:auto; min-height:0; min-width:0; }
+.synopsis{ flex:1; min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; gap:8px; }
 .synopsis .placeholder{
   height:100%; display:flex; align-items:center; justify-content:center;
   color:var(--text-faint); font-size:13px; text-align:center; padding:20px;
 }
-.synopsis .prog-title{ font-family:var(--font-display); font-size:24px; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px; overflow-wrap:break-word; word-break:break-word; }
-.synopsis .prog-meta{
-  display:flex; gap:10px; align-items:center; font-family:var(--font-mono);
-  font-size:11px; color:var(--amber); margin-bottom:12px; flex-wrap:wrap;
+/* DPTV Web's now-playing panel */
+.synopsis .tags{ display:flex; gap:8px; }
+.synopsis .tags:empty{ display:none; }
+.tag{ display:inline-flex; align-items:center; padding:2px 7px; border-radius:6px; font:600 12px var(--font-mono); letter-spacing:.5px; }
+.tag.live{ background:var(--live); color:#fff; }
+.info-title{ font:700 34px/1.05 var(--font-display); letter-spacing:.2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:break-word; }
+.info-time{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; color:var(--text); font-size:16px; }
+.info-time .mono, .info-next .mono{ font-family:var(--font-mono); }
+.info-time .left{ color:var(--text-dim); }
+.progress{ width:120px; height:6px; border-radius:3px; background:rgba(139,147,163,.45); overflow:hidden; }
+.progress span{ display:block; height:100%; background:var(--text); border-radius:3px; }
+.info-channel{ display:flex; align-items:center; gap:10px; font-weight:700; min-width:0; }
+.info-channel-name{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.logo-tile{
+  width:50px; height:40px; flex:none; display:grid; place-items:center; background:var(--panel-2);
+  border:1px solid var(--border); border-radius:9px; padding:3px; color:var(--text-faint);
+  font:600 14px var(--font-display); overflow:hidden;
 }
-.synopsis .prog-meta .chan{ color:var(--text-dim); font-family:var(--font-body); }
-.synopsis .prog-desc{ color:var(--text-dim); line-height:1.6; font-size:13px; overflow-wrap:break-word; word-break:break-word; }
-.synopsis .live-tag{
-  background:var(--live); color:#fff; font-size:10px; font-weight:700; text-transform:uppercase;
-  padding:2px 6px; border-radius:3px; letter-spacing:0.5px;
+.logo-tile img{ max-width:100%; max-height:100%; object-fit:contain; }
+.synopsis .desc{ margin:0; color:#C9D0D9; line-height:1.45; font-size:15px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.info-next{ font-size:13px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.info-next .mono{ color:var(--amber); }
+.synopsis .actions{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:4px; }
+.btn-fullscreen{
+  display:inline-flex; align-items:center; gap:8px; padding:10px 16px; border-radius:10px; border:none; cursor:pointer;
+  background:var(--amber); color:#1a1305; font:600 15px var(--font-body);
 }
-.record-control{ margin-top:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.btn-fullscreen svg{ width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2; }
+.record-control{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .record-btn{
-  display:flex; align-items:center; gap:7px;
-  font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
-  padding:9px 16px; border-radius:10px; cursor:pointer; border:1px solid var(--border);
+  display:flex; align-items:center; gap:8px;
+  font:600 15px var(--font-body);
+  padding:10px 16px; border-radius:10px; cursor:pointer; border:1px solid var(--border);
   background:var(--panel-2); color:var(--text);
 }
 .record-btn .rec-dot{ width:9px; height:9px; border-radius:50%; background:var(--live); }
-.record-btn.state-idle{ border-color:var(--live); color:var(--live); }
-.record-btn.state-idle:hover{ background:rgba(226,73,90,0.12); }
+.record-btn.state-idle{ color:var(--text); }
+.record-btn.state-idle:hover{ border-color:var(--text-faint); }
 .record-btn.state-scheduled{ border-color:var(--amber); color:var(--amber); }
 .record-btn.state-recording{ border-color:var(--live); background:rgba(226,73,90,0.16); color:#fff; }
 .record-btn.state-recording .rec-dot{ animation:recpulse 1s ease-in-out infinite; }
@@ -248,7 +267,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .preview{
   background:#05070a; position:relative; display:flex; align-items:center; justify-content:center;
   overflow:hidden; min-height:0; min-width:0; cursor:pointer;
-  border: 1px solid var(--border);
+  flex:none; height:100%; aspect-ratio:16 / 9; border-radius:14px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
 }
 .preview .backdrop{
   position:absolute; inset:0;
@@ -653,25 +672,19 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
      deliberately compact here: the guide underneath is the primary content
      on a phone and needs the vertical room, not this panel. */
   .right{ grid-template-rows: auto auto; }
-  .detail-row{ grid-template-columns: 1fr; grid-template-rows: auto minmax(120px, 20vh); }
+  .detail-row{ flex-direction:column; gap:0; padding:0; }
+  .detail-row .preview{ order:0; width:100%; height:auto; max-height:28vh; border-radius:0; }
   /* phones keep the programme above the preview: the guide below needs the room */
   .detail-row .preview{ order:0; }
-  .synopsis{
-    border-left:none; border-bottom:1px solid var(--border); padding:10px 16px 10px 56px;
-    /* a floor, not just a vh-scaled cap: content height here is driven by
-       font size, not viewport height, so a pure "Xvh" cap clips the record
-       button on shorter phones even though it fit on a taller one */
-    max-height:max(152px, 15vh);
-  }
-  .synopsis .prog-meta{ margin-bottom:6px; }
-  .synopsis .prog-title{
-    font-size:16px; margin-bottom:3px;
-    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
-  }
-  .synopsis .prog-desc{
-    font-size:12px; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:1; overflow:hidden;
-  }
-  .synopsis .record-control{ margin-top:6px; }
+  /* phones: the programme in brief above the preview - title, time, channel and the buttons */
+  .synopsis{ border-bottom:1px solid var(--border); padding:10px 16px 10px 56px; gap:5px; }
+  .synopsis .desc, .synopsis .info-next{ display:none; }
+  .info-title{ font-size:20px; -webkit-line-clamp:1; }
+  .info-time{ font-size:13px; gap:8px; }
+  .progress{ width:70px; }
+  .info-channel{ font-size:12px; }
+  .logo-tile{ width:36px; height:28px; border-radius:7px; }
+  .btn-fullscreen, .record-btn{ padding:7px 12px; font-size:13px; }
   .preview{ min-height:120px; }
 
   /* narrower channel column frees up more room for the actual timeline */
