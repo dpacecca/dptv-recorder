@@ -473,7 +473,8 @@
     list.forEach((c) => {
       const item = document.createElement('div');
       item.className = 'cat-item' + (c.id === state.activeCategoryId ? ' active' : '');
-      item.innerHTML = `<span>${escapeHtml(c.name)}</span><span class="count">${c.channelCount}</span>`;
+      item.innerHTML = `<span class="cat-name">${escapeHtml(c.name)}</span><span class="count">${c.channelCount}</span>`;
+      item.title = c.name;
       item.addEventListener('click', () => selectCategory(c.id));
       els.catList.appendChild(item);
     });

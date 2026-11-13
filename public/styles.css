@@ -136,20 +136,17 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 }
 .expand-btn:hover{ color:var(--amber); border-color:var(--amber); }
 .cat-list{ flex:1; overflow-y:auto; padding:8px; }
+/* DPTV Web's category list: a quiet row, the chosen one marked by an accent bar and accent text. */
 .cat-item{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:10px 12px; border-radius:10px; cursor:pointer; color:var(--text-dim);
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:8px 10px; min-height:36px; border-radius:8px; cursor:pointer; color:#C9D0D9;
   font-size:14px; margin-bottom:2px; transition:background .12s, color .12s;
 }
-.cat-item:hover{background:var(--panel-2); color:var(--text);}
-.cat-item.active{
-  background:linear-gradient(90deg, rgba(242,169,59,0.15), transparent);
-  color:var(--text); border-left:3px solid var(--amber); padding-left:9px;
-}
-.cat-item .count{
-  font-family:var(--font-mono); font-size:11px; color:var(--text-faint);
-  background:var(--bg); padding:2px 6px; border-radius:10px;
-}
+.cat-item .cat-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.cat-item:hover{ background:var(--panel-2); color:var(--text); }
+.cat-item.active{ background:var(--panel-2); color:var(--amber); box-shadow:inset 3px 0 0 var(--amber); }
+.cat-item .count{ flex:none; font:500 11px var(--font-mono); color:var(--text-faint); font-variant-numeric:tabular-nums; }
+.cat-item.active .count{ color:var(--text-dim); }
 .empty-hint{ color:var(--text-faint); font-size:12.5px; padding:20px; text-align:center; line-height:1.5; }
 
 /* ---------- RIGHT SIDE ---------- */
