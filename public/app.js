@@ -116,13 +116,17 @@
     return `${Math.floor(hrs / 24)}d ago`;
   }
 
+  // 24-hour, as DPTV-Player and DPTV Web show times.
   function fmtTime(ms) {
     const d = new Date(ms);
-    let h = d.getHours();
-    const m = String(d.getMinutes()).padStart(2, '0');
-    const ampm = h < 12 ? 'am' : 'pm';
-    h = h % 12; if (h === 0) h = 12;
-    return `${h}:${m}${ampm}`;
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  // "45m", "1h", "2h 30m", as the player's guide cells.
+  function fmtDur(min) {
+    const m = Math.round(min);
+    if (m < 60) return `${m}m`;
+    return m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m / 60}h`;
   }
 
   async function api(path, opts) {
@@ -496,14 +500,14 @@
   function renderTimescale() {
     for (let day = 0; day < DAY_COUNT; day++) {
       const dayDate = new Date(timelineStart + day * 24 * 60 * 60 * 1000);
-      for (let h = 0; h < 24; h++) {
+      for (let slot = 0; slot < 48; slot++) {
+        const h = Math.floor(slot / 2);
         const mark = document.createElement('div');
-        mark.className = 'hour-mark' + (h === 0 ? ' day-start' : '');
-        mark.style.width = (60 * PX_PER_MIN) + 'px';
-        mark.style.minWidth = (60 * PX_PER_MIN) + 'px';
-        const label = (h % 12 === 0 ? 12 : h % 12) + (h < 12 ? 'am' : 'pm');
-        mark.textContent = label;
-        if (h === 0) {
+        mark.className = 'hour-mark' + (slot === 0 ? ' day-start' : '');
+        mark.style.width = (30 * PX_PER_MIN) + 'px';
+        mark.style.minWidth = (30 * PX_PER_MIN) + 'px';
+        mark.textContent = `${String(h).padStart(2, '0')}:${slot % 2 ? '30' : '00'}`;
+        if (slot === 0) {
           const dl = document.createElement('div');
           dl.className = 'day-label';
           dl.textContent = day === 0 ? 'Today' : dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -519,9 +523,10 @@
       const d = new Date(timelineStart + day * 24 * 60 * 60 * 1000);
       const chip = document.createElement('div');
       chip.className = 'day-chip' + (day === 0 ? ' active' : '');
-      const dow = day === 0 ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short' });
-      const md = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      chip.innerHTML = `<span class="dow">${dow}</span>${md}`;
+      const label = day === 0 ? 'Today' : day === 1 ? 'Tomorrow'
+        : `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.getDate()}`;
+      chip.textContent = label;
+      chip.title = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
       chip.addEventListener('click', () => {
         if (state.viewMode === 'list') {
           state.listDay = day;
@@ -655,12 +660,13 @@
         const startOffsetMin = (p.start - timelineStart) / 60000;
         const durMin = (p.stop - p.start) / 60000;
         const isLive = now >= p.start && now < p.stop;
+        const isPast = p.stop <= now;
 
         const block = document.createElement('div');
-        block.className = 'epg-prog' + (isLive ? ' live' : '');
+        block.className = 'epg-prog' + (isLive ? ' live' : '') + (isPast ? ' past' : '');
         block.style.left = (startOffsetMin * PX_PER_MIN) + 'px';
         block.style.width = Math.max(20, durMin * PX_PER_MIN - 4) + 'px';
-        block.innerHTML = `${isLive ? '<span class="tag">LIVE</span>' : ''}<div class="t">${escapeHtml(p.title)}</div><div class="tm">${fmtTime(p.start)} · ${Math.round(durMin)}m</div>`;
+        block.innerHTML = `<div class="t">${escapeHtml(p.title)}</div><div class="tm">${fmtTime(p.start)} · ${fmtDur(durMin)}</div>`;
         block.addEventListener('click', () => selectProgram(block, ch, p, isLive));
         track.appendChild(block);
       });
@@ -674,7 +680,9 @@
     if (nowOffsetMin >= 0 && nowOffsetMin <= DAY_COUNT * 24 * 60) {
       const line = document.createElement('div');
       line.className = 'now-line';
-      line.style.left = (190 + nowOffsetMin * PX_PER_MIN) + 'px';
+      // after the channel column, whatever width styles.css gives it on this screen
+      const channelW = els.epgRows.querySelector('.epg-channel')?.offsetWidth || 260;
+      line.style.left = (channelW + nowOffsetMin * PX_PER_MIN) + 'px';
       line.style.height = (els.epgRows.scrollHeight + 44) + 'px';
       document.getElementById('epgScrollContent').appendChild(line);
     }
