@@ -302,6 +302,17 @@
         <button id="cfSave" class="btn-primary">Save Cloudflare Access settings</button>
       </div>
 
+      <div class="modal-hint" style="margin-top:14px"><strong>DPTV-Server</strong></div>
+      <div class="modal-hint">Trust a DPTV-Server: anyone with a login there can sign DPTV-Player and DPTV Web in to
+        this recorder with it, with no API key to copy. Their recorder account is made the first time they sign in,
+        records from DPTV-Server with that login, and each device gets its own key. Admin accounts are never taken over
+        by name: link one below.</div>
+      <label>DPTV-Server address<br><input type="text" id="dptvServerUrl" placeholder="http://192.168.1.10:8000 (blank: off)"></label>
+      <div class="modal-error" id="dptvError"></div>
+      <div class="modal-actions">
+        <button id="dptvSave" class="btn-primary">Save DPTV-Server</button>
+      </div>
+
       <div class="modal-hint" style="margin-top:10px"><strong>Users</strong></div>
       <div id="adminUsersList" class="recordings-list"></div>
       <div class="admin-user-add">

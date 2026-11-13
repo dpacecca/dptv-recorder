@@ -2,6 +2,7 @@ const express = require('express');
 const auth = require('./auth');
 const oidc = require('./oidc');
 const cfAccess = require('./cloudflareAccess');
+const dptv = require('./dptvLink');
 const { getSystemSetting, setSystemSetting } = require('./db');
 
 const router = express.Router();
@@ -19,6 +20,28 @@ router.post('/login', (req, res) => {
   const token = auth.createSession(user.id);
   auth.setSessionCookie(res, token);
   res.json({ ok: true, user: auth.sanitizeUser(user) });
+});
+
+// ---------------- sign-in with DPTV-Server ----------------
+// A player with a DPTV-Server (XC) login gets an API key for this device.
+// Off until an admin sets the DPTV-Server address (or DPTV_SERVER_URL).
+router.get('/dptv', (req, res) => {
+  res.json({ enabled: !!dptv.serverUrl() });
+});
+
+router.post('/dptv', async (req, res) => {
+  const { username, password, device } = req.body || {};
+  try {
+    const out = await dptv.signIn({ username, password, device, ip: req.ip });
+    res.json(out);
+  } catch (err) {
+    if (err instanceof dptv.SignInError) {
+      if (err.extra.retryAfter) res.set('Retry-After', String(err.extra.retryAfter));
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('[dptv] sign-in failed:', err.message);
+    res.status(500).json({ error: 'Sign-in failed.' });
+  }
 });
 
 router.post('/logout', (req, res) => {
@@ -179,6 +202,35 @@ router.post('/admin/cloudflare-access-settings', auth.requireAuth, auth.requireS
   if (aud !== undefined) setSystemSetting('cf_access_aud', aud);
   cfAccess.resetCache();
   res.json({ ok: true });
+});
+
+// ---------------- admin: DPTV-Server ----------------
+router.get('/admin/dptv-settings', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
+  res.json({ serverUrl: dptv.serverUrl(), fromEnv: dptv.serverUrlFromEnv() });
+});
+
+router.post('/admin/dptv-settings', auth.requireAuth, auth.requireSession, auth.requireAdmin, async (req, res) => {
+  if (dptv.serverUrlFromEnv()) return res.status(400).json({ error: 'Set by DPTV_SERVER_URL in the container config.' });
+  const url = dptv.normalizeUrl((req.body && req.body.serverUrl) || '');
+  if (url) {
+    // A DPTV-Server answers 401 to player_api.php with no login; anything else isn't one.
+    try {
+      if (await dptv.checkLogin(url, '', '') !== 'refused') throw new Error();
+    } catch {
+      return res.status(400).json({ error: "That address didn't answer like a DPTV-Server." });
+    }
+  }
+  dptv.setServerUrl(url);
+  res.json({ ok: true, serverUrl: url });
+});
+
+router.put('/admin/users/:id/dptv-login', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
+  try {
+    const user = dptv.linkAccount(Number(req.params.id), req.body && req.body.login);
+    res.json(auth.sanitizeUser(user));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // ---------------- admin: user management ----------------

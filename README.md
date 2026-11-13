@@ -278,6 +278,36 @@ Main endpoints:
 Keys can't manage API keys or reach the admin settings - those need a signed-in browser session.
 Only a SHA-256 hash of each key is stored in the database.
 
+## One account with DPTV-Server (2.7.0)
+
+If you run [DPTV-Server](https://github.com/dpacecca/DPTV-Server), the recorder can trust it, so
+DPTV-Player and DPTV Web sign in to recording with the same DPTV-Server (XC) login they already
+use - no API key to copy onto each device.
+
+Turn it on with the DPTV-Server address, either in **Admin → DPTV-Server** or with the
+`DPTV_SERVER_URL` environment variable (which wins, and locks the admin field). Blank means off.
+Set DPTV-Server's own "Recording server (DPTV-Recorder) URL" too, so signed-in players learn
+this recorder's address.
+
+How a sign-in works (`POST /api/auth/dptv` with JSON `{ username, password, device }`):
+
+1. The login is checked with DPTV-Server's `player_api.php`. Nothing happens if DPTV-Server refuses it.
+2. The recorder account for that login is found: the account linked to it; else a non-admin account
+   with the same username, which is then linked; else a new account, made now (it has no password
+   for the web UI, and records from DPTV-Server with that login).
+3. An account with no provider yet is pointed at DPTV-Server with that login and its channels are
+   synced. An account already set up with another provider keeps it.
+4. The device gets its own API key, named "DPTV device: …" (the answer is `{ apiKey, username }`).
+   Signing in again from the same device replaces that key.
+
+Admin accounts are never taken over by name. To use your admin account from your devices, or
+when a person's names differ, set **DPTV-Server login** on the account in **Admin → Users**.
+
+Failed sign-ins are limited: 5 per login and 20 per address in 15 minutes (`429` with
+`Retry-After` after that). Every 6 hours the logins behind issued keys are checked again; once
+DPTV-Server refuses one (disabled, expired, password changed) that account's device keys are
+withdrawn, and the device signs in again or stops. Passwords are never logged.
+
 ## Live pause and rewind for DPTV-Player
 
 DPTV-Player (v2.1.5 and later) can keep its **Pause and rewind live TV** copy here instead of on the

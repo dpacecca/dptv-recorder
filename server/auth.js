@@ -34,6 +34,9 @@ function findUserByUsername(username) {
 function findUserByEmail(email) {
   return db.prepare('SELECT * FROM users WHERE email = ?').get(String(email).toLowerCase());
 }
+function findUserByDptvLogin(login) {
+  return db.prepare('SELECT * FROM users WHERE dptv_login = ?').get(login);
+}
 function findUserByOidcSubject(sub) {
   return db.prepare('SELECT * FROM users WHERE oidc_subject = ?').get(sub);
 }
@@ -135,18 +138,18 @@ function hashApiKey(key) {
   return crypto.createHash('sha256').update(key).digest('hex');
 }
 
-function createApiKey(userId, name) {
+function createApiKey(userId, name, source = null) {
   const key = API_KEY_PREFIX + crypto.randomBytes(32).toString('hex');
   const info = db.prepare(`
-    INSERT INTO api_keys (user_id, name, key_hash, key_prefix, created_at)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(userId, name, hashApiKey(key), key.slice(0, API_KEY_PREFIX.length + 6), Date.now());
+    INSERT INTO api_keys (user_id, name, key_hash, key_prefix, created_at, source)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(userId, name, hashApiKey(key), key.slice(0, API_KEY_PREFIX.length + 6), Date.now(), source);
   return { id: info.lastInsertRowid, key };
 }
 
 function listApiKeys(userId) {
   return db.prepare(`
-    SELECT id, name, key_prefix, created_at, last_used_at FROM api_keys
+    SELECT id, name, key_prefix, created_at, last_used_at, source FROM api_keys
     WHERE user_id = ? ORDER BY created_at DESC
   `).all(userId);
 }
@@ -238,6 +241,7 @@ module.exports = {
   findUserByUsername,
   findUserByEmail,
   findUserByOidcSubject,
+  findUserByDptvLogin,
   listUsers,
   createUser,
   verifyPassword,
