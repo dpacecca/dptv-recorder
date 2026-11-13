@@ -163,17 +163,57 @@
     return s;
   }
 
+  // ---------------- left menu: Recorder, then each settings page full screen ----------------
+  function markNav(key) {
+    document.querySelectorAll('.side-nav-item').forEach((b) => b.classList.toggle('active', b.dataset.nav === key));
+  }
+  // The settings page fills the space right of the menu, below the header (and any error banner).
+  function placeSettingsPage() {
+    const main = document.getElementById('mainContent').getBoundingClientRect();
+    const nav = document.getElementById('sideNav');
+    const navRight = nav && nav.offsetParent ? nav.getBoundingClientRect().right : 0;
+    els.modal.style.setProperty('--page-top', main.top + 'px');
+    els.modal.style.setProperty('--page-left', navRight + 'px');
+  }
+  window.addEventListener('resize', () => { if (els.modal.classList.contains('open')) placeSettingsPage(); });
+
   function openSettingsModal(errorMsg) {
     els.cfgError.textContent = errorMsg || '';
+    placeSettingsPage();
     els.modal.classList.add('open');
+    const active = document.querySelector('.modal-tab.active');
+    const key = active ? active.dataset.tab : 'xc';
+    markNav(key);
+    const item = document.querySelector(`.side-nav-item[data-nav="${key}"] span`);
+    document.getElementById('settingsPageTitle').textContent = item ? item.textContent : 'Settings';
   }
   function closeSettingsModal() {
     els.modal.classList.remove('open');
     els.cfgError.textContent = '';
     stopRecordingsPoll();
+    markNav('recorder');
   }
 
-  els.settingsBtn.addEventListener('click', async () => {
+  /** Opens one settings page (xc, epg, rec, notify, list, account, admin) with its current values. */
+  async function openSettingsPage(tab) {
+    if (tab === 'account' || tab === 'admin' || tab === 'list') {
+      switchSettingsTab(tab);
+      openSettingsModal();
+      return;
+    }
+    await loadSettingsValues();
+    switchSettingsTab(tab);
+    openSettingsModal();
+  }
+
+  document.querySelectorAll('.side-nav-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.nav === 'recorder') closeSettingsModal();
+      else openSettingsPage(btn.dataset.nav).catch((err) => showError(err.message));
+    });
+  });
+
+  async function loadSettingsValues() {
     const s = await api('/settings');
     els.cfgHost.value = s.xcHost || '';
     els.cfgUser.value = s.xcUsername || '';
@@ -191,9 +231,8 @@
     els.cfgNotifyCompleted.checked = notify.notifyCompleted;
     els.cfgNotifyFailed.checked = notify.notifyFailed;
     await loadEpgSources();
-    switchSettingsTab('xc');
-    openSettingsModal();
-  });
+  }
+  els.settingsBtn.addEventListener('click', () => openSettingsPage('xc').catch((err) => showError(err.message)));
   els.cfgCancel.addEventListener('click', closeSettingsModal);
   els.cfgRecCancel.addEventListener('click', closeSettingsModal);
   els.epgCancel.addEventListener('click', closeSettingsModal);
@@ -1376,6 +1415,7 @@
     state.currentUser = user;
     document.getElementById('userMenuName').textContent = user.first_name || user.username;
     document.getElementById('adminTabBtn').style.display = user.is_admin ? 'block' : 'none';
+    document.getElementById('adminNavBtn').style.display = user.is_admin ? 'flex' : 'none';
   }
 
   document.getElementById('loginSubmit').addEventListener('click', async () => {
