@@ -60,12 +60,16 @@
       <option value="24">Every 24 hrs</option>
     </select>
     <button id="syncBtn"><span class="spin"></span><span id="syncLabel">Sync now</span></button>
-    <button id="recordingsBtn" title="Recordings">⏺ <span id="recordingsBadge" class="badge" style="display:none">0</span></button>
-    <button id="settingsBtn" title="Settings">⚙</button>
     <button id="userMenuBtn" title="Account"><span id="userMenuName">Account</span></button>
     <span id="versionBadge" class="version-badge" title="Loading version...">v?.?.?</span>
   </div>
 </header>
+
+<nav class="view-tabs" id="viewTabs" style="display:none">
+  <button class="view-tab active" id="navRecorderBtn" data-view="recorder">Recorder</button>
+  <button class="view-tab" id="navRecordingsBtn" data-view="recordings">Recordings <span id="recordingsBadge" class="badge" style="display:none">0</span></button>
+  <button class="view-tab" id="navSettingsBtn">Settings</button>
+</nav>
 
 <div class="error-banner" id="errorBanner" style="display:none">
   <span id="errorBannerText"></span>
@@ -138,7 +142,15 @@
   </div>
 </div>
 
-<!-- settings modal: XC Server / Recording settings / Recordings list -->
+<div class="recordings-page" id="recordingsView" style="display:none">
+  <div class="rec-list-toolbar">
+    <label class="rec-select-all"><input type="checkbox" id="recSelectAll"> Select all</label>
+    <button id="recDeleteSelected" class="btn-secondary" disabled>Delete selected</button>
+  </div>
+  <div id="recordingsList" class="recordings-list"></div>
+</div>
+
+<!-- settings modal: XC Server / Recording settings / Logs -->
 <div class="modal-backdrop" id="settingsModal">
   <div class="modal modal-wide">
     <div class="modal-tabs">
@@ -146,9 +158,9 @@
       <button class="modal-tab" data-tab="epg">EPG Source</button>
       <button class="modal-tab" data-tab="rec">Recording</button>
       <button class="modal-tab" data-tab="notify">Notifications</button>
-      <button class="modal-tab" data-tab="list">Recordings</button>
       <button class="modal-tab" data-tab="account">Account</button>
       <button class="modal-tab" data-tab="admin" id="adminTabBtn" style="display:none">Admin</button>
+      <button class="modal-tab" data-tab="logs" id="logsTabBtn" style="display:none">Logs</button>
     </div>
 
     <div class="modal-tab-panel" id="tabXc">
@@ -232,17 +244,6 @@
       </div>
     </div>
 
-    <div class="modal-tab-panel" id="tabList" style="display:none">
-      <div class="rec-list-toolbar">
-        <label class="rec-select-all"><input type="checkbox" id="recSelectAll"> Select all</label>
-        <button id="recDeleteSelected" class="btn-secondary" disabled>Delete selected</button>
-      </div>
-      <div id="recordingsList" class="recordings-list"></div>
-      <div class="modal-actions">
-        <button id="recListClose" class="btn-secondary">Close</button>
-      </div>
-    </div>
-
     <div class="modal-tab-panel" id="tabAccount" style="display:none">
       <label>First name<br><input type="text" id="acctFirstName"></label>
       <label>Last name<br><input type="text" id="acctLastName"></label>
@@ -296,6 +297,25 @@
         <button id="newUserAdd" class="btn-secondary">Add user</button>
       </div>
       <div class="modal-error" id="adminUsersError"></div>
+    </div>
+
+    <div class="modal-tab-panel" id="tabLogs" style="display:none">
+      <div class="modal-header-row">
+        <label class="rec-select-all">Show last
+          <select id="logLinesSelect">
+            <option value="100">100 lines</option>
+            <option value="200">200 lines</option>
+            <option value="500">500 lines</option>
+            <option value="1000">1000 lines</option>
+          </select>
+        </label>
+        <div class="modal-actions" style="margin:0">
+          <button id="logRefresh" class="btn-secondary">Refresh</button>
+          <button id="logDownload" class="btn-secondary">Download full log</button>
+        </div>
+      </div>
+      <pre id="logOutput" class="log-output">Loading...</pre>
+      <div class="modal-error" id="logError"></div>
     </div>
   </div>
 </div>

@@ -5,6 +5,7 @@ const https = require('https');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 require('./db'); // ensures schema exists
+require('./logger').install(); // mirrors console output to a file - do this before anything else logs
 const routes = require('./routes');
 const authRoutes = require('./authRoutes');
 const { hlsProxyHandler, tsProxyHandler } = require('./hlsProxy');

@@ -20,13 +20,14 @@
     autoSync: document.getElementById('autoSync'),
     syncBtn: document.getElementById('syncBtn'),
     syncLabel: document.getElementById('syncLabel'),
-    settingsBtn: document.getElementById('settingsBtn'),
-    recordingsBtn: document.getElementById('recordingsBtn'),
+    navRecorderBtn: document.getElementById('navRecorderBtn'),
+    navRecordingsBtn: document.getElementById('navRecordingsBtn'),
+    navSettingsBtn: document.getElementById('navSettingsBtn'),
+    recordingsView: document.getElementById('recordingsView'),
     recordingsBadge: document.getElementById('recordingsBadge'),
     recordingsList: document.getElementById('recordingsList'),
     recSelectAll: document.getElementById('recSelectAll'),
     recDeleteSelected: document.getElementById('recDeleteSelected'),
-    recListClose: document.getElementById('recListClose'),
     catFilter: document.getElementById('catFilter'),
     catList: document.getElementById('catList'),
     synopsisPanel: document.getElementById('synopsisPanel'),
@@ -74,6 +75,11 @@
     epgSourceError: document.getElementById('epgSourceError'),
     epgCancel: document.getElementById('epgCancel'),
     epgSave: document.getElementById('epgSave'),
+    logLinesSelect: document.getElementById('logLinesSelect'),
+    logOutput: document.getElementById('logOutput'),
+    logRefresh: document.getElementById('logRefresh'),
+    logDownload: document.getElementById('logDownload'),
+    logError: document.getElementById('logError'),
   };
 
   let state = {
@@ -166,10 +172,9 @@
   function closeSettingsModal() {
     els.modal.classList.remove('open');
     els.cfgError.textContent = '';
-    stopRecordingsPoll();
   }
 
-  els.settingsBtn.addEventListener('click', async () => {
+  els.navSettingsBtn.addEventListener('click', async () => {
     const s = await api('/settings');
     els.cfgHost.value = s.xcHost || '';
     els.cfgUser.value = s.xcUsername || '';
@@ -194,7 +199,6 @@
   els.cfgRecCancel.addEventListener('click', closeSettingsModal);
   els.epgCancel.addEventListener('click', closeSettingsModal);
   els.cfgNotifyCancel.addEventListener('click', closeSettingsModal);
-  els.recListClose.addEventListener('click', closeSettingsModal);
   document.getElementById('acctCancel').addEventListener('click', closeSettingsModal);
   document.getElementById('adminCancel').addEventListener('click', closeSettingsModal);
 
@@ -207,13 +211,8 @@
     document.getElementById('tabEpg').style.display = tab === 'epg' ? 'flex' : 'none';
     document.getElementById('tabRec').style.display = tab === 'rec' ? 'flex' : 'none';
     document.getElementById('tabNotify').style.display = tab === 'notify' ? 'flex' : 'none';
-    document.getElementById('tabList').style.display = tab === 'list' ? 'flex' : 'none';
-    if (tab === 'list') {
-      loadRecordingsList();
-      startRecordingsPoll();
-    } else {
-      stopRecordingsPoll();
-    }
+    document.getElementById('tabLogs').style.display = tab === 'logs' ? 'flex' : 'none';
+    if (tab === 'logs') loadLogs();
   }
 
   els.cfgRecSave.addEventListener('click', async () => {
@@ -830,10 +829,21 @@
     recordingsPollTimer = null;
   }
 
-  els.recordingsBtn.addEventListener('click', () => {
-    switchSettingsTab('list');
-    openSettingsModal();
-  });
+  // ---------------- top-level view switching (Recorder / Recordings) ----------------
+  function showView(view) {
+    screens.main.style.display = view === 'recorder' ? 'grid' : 'none';
+    els.recordingsView.style.display = view === 'recordings' ? 'flex' : 'none';
+    els.navRecorderBtn.classList.toggle('active', view === 'recorder');
+    els.navRecordingsBtn.classList.toggle('active', view === 'recordings');
+    if (view === 'recordings') {
+      loadRecordingsList();
+      startRecordingsPoll();
+    } else {
+      stopRecordingsPoll();
+    }
+  }
+  els.navRecorderBtn.addEventListener('click', () => showView('recorder'));
+  els.navRecordingsBtn.addEventListener('click', () => showView('recordings'));
 
   function deletableStatuses() {
     return ['completed', 'failed', 'cancelled'];
@@ -1318,6 +1328,7 @@
     login: document.getElementById('loginScreen'),
     forceChange: document.getElementById('forceChangeScreen'),
     header: document.getElementById('appHeader'),
+    viewTabs: document.getElementById('viewTabs'),
     main: document.getElementById('mainContent'),
   };
 
@@ -1325,7 +1336,10 @@
     screens.login.style.display = 'none';
     screens.forceChange.style.display = 'none';
     screens.header.style.display = 'none';
+    screens.viewTabs.style.display = 'none';
     screens.main.style.display = 'none';
+    els.recordingsView.style.display = 'none';
+    stopRecordingsPoll();
   }
 
   async function showLoginScreen() {
@@ -1363,10 +1377,12 @@
   function showApp(user) {
     hideAllScreens();
     screens.header.style.display = 'flex';
-    screens.main.style.display = 'grid';
+    screens.viewTabs.style.display = 'flex';
     state.currentUser = user;
     document.getElementById('userMenuName').textContent = user.first_name || user.username;
     document.getElementById('adminTabBtn').style.display = user.is_admin ? 'block' : 'none';
+    document.getElementById('logsTabBtn').style.display = user.is_admin ? 'block' : 'none';
+    showView('recorder');
   }
 
   document.getElementById('loginSubmit').addEventListener('click', async () => {
@@ -1599,6 +1615,24 @@
     } catch (err) {
       errEl.textContent = err.message;
     }
+  });
+
+  // ---------------- logs tab ----------------
+  async function loadLogs() {
+    els.logError.textContent = '';
+    els.logOutput.textContent = 'Loading...';
+    try {
+      const data = await api('/auth/admin/logs?lines=' + encodeURIComponent(els.logLinesSelect.value));
+      els.logOutput.textContent = data.lines.length ? data.lines.join('\n') : '(log is empty)';
+    } catch (err) {
+      els.logOutput.textContent = '';
+      els.logError.textContent = err.message;
+    }
+  }
+  els.logRefresh.addEventListener('click', loadLogs);
+  els.logLinesSelect.addEventListener('change', loadLogs);
+  els.logDownload.addEventListener('click', () => {
+    window.location.href = '/api/auth/admin/logs/download';
   });
 
   // hook the admin/account tab loads into the existing tab switcher
