@@ -56,3 +56,15 @@ test('a cut-off .mkv is remuxed once to its real length; a checked one is left a
   await recorder.repairUnfinishedMkvs();
   assert.equal(fs.statSync(file).mtimeMs, mtime, 'checked once, not again');
 });
+
+test('the recorder-wide default format applies to users without their own, and can be applied to all', () => {
+  const carol = auth.createUser({ username: 'carol', password: 'secret123', firstName: 'C', lastName: 'A', email: 'c@x' });
+  assert.equal(recorder.getRecordingSettings(carol.id).recordFormat, 'ts', 'TS until an admin picks otherwise');
+  assert.equal(recorder.setDefaultRecordFormat('mkv_post', false), 'mkv_post');
+  assert.equal(recorder.getRecordingSettings(carol.id).recordFormat, 'mkv_post', 'no choice of her own: the default');
+  setSetting(user.id, 'record_format', 'ts');
+  assert.equal(recorder.getRecordingSettings(user.id).recordFormat, 'ts', 'his own choice wins');
+  recorder.setDefaultRecordFormat('mkv_post', true);
+  assert.equal(recorder.getRecordingSettings(user.id).recordFormat, 'mkv_post', 'applied to everyone');
+  assert.equal(recorder.setDefaultRecordFormat('bogus', false), 'ts');
+});

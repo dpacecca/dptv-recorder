@@ -1667,6 +1667,9 @@
       document.getElementById('linePassword').value = '';
       document.getElementById('linePassword').placeholder = lineSettings.hasPassword ? '(leave blank to keep the current password)' : 'password';
 
+      const fmtSettings = await api('/auth/admin/record-format');
+      document.getElementById('defaultRecFormat').value = fmtSettings.format || 'ts';
+
       const dptvSettings = await api('/auth/admin/dptv-settings');
       const dptvInput = document.getElementById('dptvServerUrl');
       dptvInput.value = dptvSettings.serverUrl || '';
@@ -1783,6 +1786,24 @@
       document.getElementById('linePassword').placeholder = out.hasPassword ? '(leave blank to keep the current password)' : 'password';
       errEl.style.color = 'var(--teal)';
       errEl.textContent = out.configured ? 'Saved. Recordings now use this line first.' : 'Saved. Recordings use each user\'s own login.';
+    } catch (err) {
+      errEl.style.color = '';
+      errEl.textContent = err.message;
+    }
+  });
+
+  document.getElementById('defaultRecFormatSave').addEventListener('click', async () => {
+    const errEl = document.getElementById('defaultRecFormatError');
+    errEl.textContent = '';
+    const applyToAll = document.getElementById('defaultRecFormatAll').checked;
+    try {
+      await api('/auth/admin/record-format', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: document.getElementById('defaultRecFormat').value, applyToAll }),
+      });
+      errEl.style.color = 'var(--teal)';
+      errEl.textContent = applyToAll ? 'Saved. Every user now records in this format.' : 'Saved. Users who have not chosen their own format use it.';
     } catch (err) {
       errEl.style.color = '';
       errEl.textContent = err.message;
