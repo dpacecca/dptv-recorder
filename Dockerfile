@@ -33,6 +33,8 @@ ENV PUID=99
 ENV PGID=100
 
 EXPOSE 3000
+# Optional player-API-only port, served when API_PORT is set (see README).
+EXPOSE 3001
 VOLUME ["/data", "/recordings"]
 
 ENTRYPOINT ["/entrypoint.sh"]
