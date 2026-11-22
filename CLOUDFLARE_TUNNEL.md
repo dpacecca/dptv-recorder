@@ -7,6 +7,27 @@ end-to-end.** You still get a real `https://` URL for browsers; DPTV
 Recorder just needs to behave correctly while sitting behind that tunnel,
 which this version handles automatically (see below).
 
+## Player API only (recommended for recording away from home)
+
+To let DPTV-Player and DPTV Web reach your recordings from anywhere **without**
+putting the web UI, the password login or the admin API on the internet, set
+`API_PORT` (default `3001` in the compose files and the Unraid template) and
+point the tunnel at that port instead of `3000`:
+
+```yaml
+ingress:
+  - hostname: dptvr.yourdomain.com
+    service: http://dptv-recorder:3001   # the player API alone
+  - service: http_status:404
+```
+
+That port answers only sign-in with a DPTV-Server login (`/api/auth/dptv`),
+recordings (`/api/recordings…`), recording files (`/api/recording-file/…`),
+timeshift (`/api/timeshift…`), `/api/sync/status` and `/api/version`; anything
+else is a 404. No path rules are needed in Cloudflare. Keep using port `3000`
+for the web UI on your LAN. This is the same arrangement as DPTV-Server, whose
+tunnel points at its backend port while its admin UI stays at home.
+
 ## 1. Set up the tunnel
 
 If you don't already have `cloudflared` running (e.g. as its own container,
