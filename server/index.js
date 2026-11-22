@@ -107,15 +107,6 @@ function startServer() {
 const certPath = process.env.TLS_CERT_PATH;
 const keyPath = process.env.TLS_KEY_PATH;
 
-// (2.10.6) API_PORT: the player API alone, for publishing to the internet (see publicApi.js).
-const API_PORT = process.env.API_PORT;
-if (API_PORT && String(API_PORT) !== String(PORT)) {
-  const { publicApiHandler } = require('./publicApi');
-  http.createServer(publicApiHandler(app)).listen(API_PORT, () => {
-    console.log(`DPTV Recorder player API (no web UI) listening on port ${API_PORT}`);
-  });
-}
-
 if (certPath && keyPath) {
   const options = { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) };
   https.createServer(options, app).listen(PORT, () => {

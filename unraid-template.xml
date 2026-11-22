@@ -22,8 +22,6 @@
   <DonateLink/>
   <Requires/>
   <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Port the web UI is served on" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
-  <Config Name="Player API Port" Target="3001" Default="3001" Mode="tcp" Description="The player API alone (no web UI, no password login, no admin) - point a Cloudflare Tunnel or reverse proxy here to use recordings away from home. Served because API_PORT is set below." Type="Port" Display="always" Required="false" Mask="false">3001</Config>
-  <Config Name="API_PORT" Target="API_PORT" Default="3001" Mode="" Description="Container port of the player-API-only listener. Blank: off." Type="Variable" Display="advanced" Required="false" Mask="false">3001</Config>
   <Config Name="Data" Target="/data" Default="/mnt/user/appdata/dptv-recorder/data" Mode="rw" Description="Where the SQLite database (channels/EPG/settings) is stored. This is the ONLY place that path is configured - do not add a DB_PATH variable." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/dptv-recorder/data</Config>
   <Config Name="Recordings" Target="/recordings" Default="/mnt/user/data/media/recordings" Mode="rw" Description="Where recorded .ts files are written. Point this at a disk with real room - raw .ts is not small. This is the ONLY place that path is configured - do not add a RECORDINGS_PATH variable." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media/recordings</Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the app runs as, so files it writes are owned correctly. Unraid default (nobody): 99" Type="Variable" Display="always" Required="false" Mask="false">99</Config>
