@@ -4,6 +4,7 @@ const oidc = require('./oidc');
 const cfAccess = require('./cloudflareAccess');
 const dptv = require('./dptvLink');
 const recordingLine = require('./recordingLine');
+const logger = require('./logger');
 const { getSystemSetting, setSystemSetting } = require('./db');
 
 const router = express.Router();
@@ -278,6 +279,20 @@ router.delete('/admin/users/:id', auth.requireAuth, auth.requireSession, auth.re
   require('./db').db.prepare('DELETE FROM api_keys WHERE user_id = ?').run(id);
   require('./db').db.prepare('DELETE FROM users WHERE id = ?').run(id);
   res.json({ ok: true });
+});
+
+// ---------------- admin: logs ----------------
+router.get('/admin/logs', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
+  let lines = parseInt(req.query.lines, 10);
+  if (!Number.isFinite(lines) || lines <= 0) lines = 100;
+  lines = Math.min(lines, 1000);
+  res.json({ lines: logger.readLastLines(lines) });
+});
+
+router.get('/admin/logs/download', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
+  res.download(logger.LOG_PATH, 'dptv-recorder.log', (err) => {
+    if (err && !res.headersSent) res.status(404).json({ error: 'No log file yet.' });
+  });
 });
 
 // ---------------- API keys ----------------

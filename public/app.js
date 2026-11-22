@@ -21,12 +21,11 @@
     syncBtn: document.getElementById('syncBtn'),
     syncLabel: document.getElementById('syncLabel'),
     settingsBtn: document.getElementById('settingsBtn'),
-    recordingsBtn: document.getElementById('recordingsBtn'),
+    recordingsPage: document.getElementById('recordingsPage'),
     recordingsBadge: document.getElementById('recordingsBadge'),
     recordingsList: document.getElementById('recordingsList'),
     recSelectAll: document.getElementById('recSelectAll'),
     recDeleteSelected: document.getElementById('recDeleteSelected'),
-    recListClose: document.getElementById('recListClose'),
     catFilter: document.getElementById('catFilter'),
     catList: document.getElementById('catList'),
     synopsisPanel: document.getElementById('synopsisPanel'),
@@ -74,6 +73,11 @@
     epgSourceError: document.getElementById('epgSourceError'),
     epgCancel: document.getElementById('epgCancel'),
     epgSave: document.getElementById('epgSave'),
+    logLinesSelect: document.getElementById('logLinesSelect'),
+    logOutput: document.getElementById('logOutput'),
+    logRefresh: document.getElementById('logRefresh'),
+    logDownload: document.getElementById('logDownload'),
+    logError: document.getElementById('logError'),
   };
 
   let state = {
@@ -163,40 +167,54 @@
     return s;
   }
 
-  // ---------------- Recorder / Settings tabs; Settings has its own menu, as DPTV-Server ----------------
+  // ---------------- Recorder / Recordings / Settings tabs; Settings has its own menu, as DPTV-Server ----------------
   // Sections and the old tab names that lead to them (first-run and other callers still use those).
-  const SECTION_OF = { xc: 'sources', epg: 'sources', rec: 'recording', list: 'recording', notify: 'account', account: 'account', admin: 'admin' };
-  const SECTION_TITLE = { sources: 'Sources', recording: 'Recording', account: 'Account Settings', admin: 'Admin Settings' };
+  const SECTION_OF = { xc: 'sources', epg: 'sources', rec: 'recording', notify: 'account', account: 'account', admin: 'admin', logs: 'logs' };
+  const SECTION_TITLE = { sources: 'Sources', recording: 'Recording', account: 'Account Settings', admin: 'Admin Settings', logs: 'Logs' };
   let currentSection = 'sources';
-  let recordingSub = 'list';
 
   function markTop(key) {
     document.querySelectorAll('.top-tab').forEach((b) => b.classList.toggle('on', b.dataset.top === key));
   }
-  // The settings page fills the window below the header (and any error banner).
-  function placeSettingsPage() {
+  // Settings and Recordings both fill the window below the header (and any error banner).
+  function placeOverlayPage() {
     const main = document.getElementById('mainContent').getBoundingClientRect();
-    els.modal.style.setProperty('--page-top', main.top + 'px');
+    document.documentElement.style.setProperty('--page-top', main.top + 'px');
   }
-  window.addEventListener('resize', () => { if (els.modal.classList.contains('open')) placeSettingsPage(); });
+  window.addEventListener('resize', () => {
+    if (els.modal.classList.contains('open') || els.recordingsPage.style.display !== 'none') placeOverlayPage();
+  });
 
+  function hideTopPages() {
+    els.modal.classList.remove('open');
+    els.recordingsPage.style.display = 'none';
+  }
   function openSettingsModal(errorMsg) {
     els.cfgError.textContent = errorMsg || '';
-    placeSettingsPage();
+    hideTopPages();
+    placeOverlayPage();
     els.modal.classList.add('open');
     markTop('settings');
   }
   function closeSettingsModal() {
-    els.modal.classList.remove('open');
+    hideTopPages();
     els.cfgError.textContent = '';
     stopRecordingsPoll();
     markTop('recorder');
   }
+  function openRecordingsPage() {
+    hideTopPages();
+    placeOverlayPage();
+    els.recordingsPage.style.display = 'flex';
+    markTop('recordings');
+    loadRecordingsList();
+    startRecordingsPoll();
+  }
 
-  /** Opens Settings at a section (sources, recording, account, admin) or an old tab name, with current values. */
+  /** Opens Settings at a section (sources, recording, account, admin, logs) or an old tab name, with current values. */
   async function openSettingsPage(where) {
     const section = SECTION_OF[where] || where;
-    if (section !== 'admin') await loadSettingsValues();
+    if (section !== 'admin' && section !== 'logs') await loadSettingsValues();
     switchSettingsTab(where);
     openSettingsModal();
   }
@@ -204,14 +222,12 @@
   document.querySelectorAll('.top-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
       if (btn.dataset.top === 'recorder') closeSettingsModal();
+      else if (btn.dataset.top === 'recordings') openRecordingsPage();
       else openSettingsPage(currentSection).catch((err) => showError(err.message));
     });
   });
   document.querySelectorAll('#settingsNav .side-nav-item').forEach((btn) => {
     btn.addEventListener('click', () => openSettingsPage(btn.dataset.section).catch((err) => showError(err.message)));
-  });
-  document.querySelectorAll('#recordingSubTabs .sub-tab').forEach((btn) => {
-    btn.addEventListener('click', () => switchSettingsTab(btn.dataset.sub === 'list' ? 'list' : 'rec'));
   });
 
   async function loadSettingsValues() {
@@ -238,39 +254,33 @@
   els.cfgRecCancel.addEventListener('click', closeSettingsModal);
   els.epgCancel.addEventListener('click', closeSettingsModal);
   els.cfgNotifyCancel.addEventListener('click', closeSettingsModal);
-  els.recListClose.addEventListener('click', closeSettingsModal);
   document.getElementById('acctCancel').addEventListener('click', closeSettingsModal);
   document.getElementById('adminCancel').addEventListener('click', closeSettingsModal);
 
   /**
-   * Shows one section of Settings: Sources (XC server + EPG), Recording (the recordings, or their
-   * settings), Account Settings (account + notifications) or Admin Settings. Takes a section or an
-   * old tab name (xc, epg, rec, list, notify, account, admin).
+   * Shows one section of Settings: Sources (XC server + EPG), Recording (its settings - the
+   * recordings themselves are their own top-level page now), Account Settings (account +
+   * notifications), Admin Settings or Logs. Takes a section or an old tab name (xc, epg, rec,
+   * notify, account, admin, logs).
    */
   function switchSettingsTab(where) {
     const section = SECTION_OF[where] || where;
-    if (section === 'recording') {
-      if (where === 'list') recordingSub = 'list';
-      else if (where === 'rec') recordingSub = 'settings';
-    }
     currentSection = section;
     const show = {
       tabXc: section === 'sources',
       tabEpg: section === 'sources',
-      tabList: section === 'recording' && recordingSub === 'list',
-      tabRec: section === 'recording' && recordingSub === 'settings',
+      tabRec: section === 'recording',
       tabAccount: section === 'account',
       tabNotify: section === 'account',
       tabAdmin: section === 'admin',
+      tabLogs: section === 'logs',
     };
     Object.entries(show).forEach(([id, on]) => { document.getElementById(id).style.display = on ? 'flex' : 'none'; });
-    document.getElementById('recordingSubTabs').style.display = section === 'recording' ? 'flex' : 'none';
-    document.querySelectorAll('#recordingSubTabs .sub-tab').forEach((b) => b.classList.toggle('on', b.dataset.sub === recordingSub));
     document.querySelectorAll('#settingsNav .side-nav-item').forEach((b) => b.classList.toggle('active', b.dataset.section === section));
     document.getElementById('settingsPageTitle').textContent = SECTION_TITLE[section] || 'Settings';
-    if (show.tabList) { loadRecordingsList(); startRecordingsPoll(); } else { stopRecordingsPoll(); }
     if (section === 'admin') loadAdminTab();
     if (section === 'account') loadAccountTab();
+    if (section === 'logs') loadLogs();
   }
 
   els.cfgRecSave.addEventListener('click', async () => {
@@ -913,8 +923,6 @@
     recordingsPollTimer = null;
   }
 
-  els.recordingsBtn.addEventListener('click', () => openSettingsPage('list').catch((err) => showError(err.message)));
-
   function deletableStatuses() {
     return ['completed', 'failed', 'cancelled'];
   }
@@ -1406,6 +1414,9 @@
     screens.forceChange.style.display = 'none';
     screens.header.style.display = 'none';
     screens.main.style.display = 'none';
+    els.modal.classList.remove('open');
+    els.recordingsPage.style.display = 'none';
+    stopRecordingsPoll();
   }
 
   async function showLoginScreen() {
@@ -1447,6 +1458,7 @@
     state.currentUser = user;
     document.getElementById('userMenuName').textContent = user.first_name || user.username;
     document.getElementById('adminNavBtn').style.display = user.is_admin ? 'flex' : 'none';
+    document.getElementById('logsNavBtn').style.display = user.is_admin ? 'flex' : 'none';
   }
 
   document.getElementById('loginSubmit').addEventListener('click', async () => {
@@ -1819,6 +1831,23 @@
     }
   });
 
+  // ---------------- logs section ----------------
+  async function loadLogs() {
+    els.logError.textContent = '';
+    els.logOutput.textContent = 'Loading...';
+    try {
+      const data = await api('/auth/admin/logs?lines=' + encodeURIComponent(els.logLinesSelect.value));
+      els.logOutput.textContent = data.lines.length ? data.lines.join('\n') : '(log is empty)';
+    } catch (err) {
+      els.logOutput.textContent = '';
+      els.logError.textContent = err.message;
+    }
+  }
+  els.logRefresh.addEventListener('click', loadLogs);
+  els.logLinesSelect.addEventListener('change', loadLogs);
+  els.logDownload.addEventListener('click', () => {
+    window.location.href = '/api/auth/admin/logs/download';
+  });
 
   // ---------------- bootstrap ----------------
   async function bootstrapAuth() {

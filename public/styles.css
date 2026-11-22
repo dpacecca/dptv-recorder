@@ -101,16 +101,10 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   font-family:var(--font-mono); font-size:10px; color:var(--text-faint);
   padding:2px 6px; border:1px solid var(--border); border-radius:4px;
 }
-#recordingsBtn{
-  position:relative;
-  background:var(--panel-2); color:var(--text-dim); border:1px solid var(--border);
-  border-radius:10px; height:34px; padding:0 10px; font-size:14px; cursor:pointer;
-  display:flex; align-items:center; gap:4px;
-}
-#recordingsBtn:hover{ color:var(--live); border-color:var(--live); }
-#recordingsBtn .badge{
+.top-tab .badge{
   background:var(--live); color:#fff; font-size:10px; font-weight:700;
-  border-radius:9px; padding:1px 6px; font-family:var(--font-mono);
+  border-radius:9px; padding:1px 6px; font-family:var(--font-mono); margin-left:2px;
+  vertical-align:1px;
 }
 
 /* ---------- MAIN LAYOUT ---------- */
@@ -142,14 +136,6 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 .side-nav-item:hover{ background:var(--panel-2); }
 .side-nav-item.active{ background:var(--amber); color:#1a1305; }
 
-/* Recording's Recordings / Settings switch, as DPTV Web's DVR filter chips */
-.sub-tabs{ display:flex; gap:6px; }
-.sub-tab{
-  padding:6px 14px; border-radius:10px; background:var(--panel-2); border:1px solid var(--border); cursor:pointer;
-  color:var(--text-dim); font-family:var(--font-display); font-weight:600; font-size:16px; letter-spacing:.5px; text-transform:uppercase;
-}
-.sub-tab:hover{ color:var(--text); }
-.sub-tab.on{ background:var(--amber); border-color:var(--amber); color:#1a1305; }
 .section-title{ font:600 18px var(--font-display); letter-spacing:1px; text-transform:uppercase; color:var(--text-dim); }
 /* Account Settings: the account first, then notifications */
 #tabNotify{ order:1; }
@@ -167,6 +153,26 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
 }
 #settingsModal .page-title{ font:600 26px var(--font-display); letter-spacing:.5px; text-transform:uppercase; margin-bottom:4px; }
 #settingsModal .modal-tab-panel{ max-width:760px; }
+
+/* Recordings: its own full page below the header, same positioning trick as Settings */
+#recordingsPage{
+  position:fixed; inset:auto; top:var(--page-top, 56px); left:0; right:0; bottom:0;
+  background:var(--bg); z-index:40; overflow-y:auto; padding:24px 32px 40px;
+  display:flex; flex-direction:column; gap:14px;
+}
+#recordingsPage .page-title{ font:600 26px var(--font-display); letter-spacing:.5px; text-transform:uppercase; margin-bottom:4px; }
+#recordingsPage .recordings-list{ max-height:none; }
+
+.log-output{
+  background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:12px;
+  font-family:var(--font-mono); font-size:11px; line-height:1.5; color:var(--text-dim);
+  max-height:55vh; overflow:auto; white-space:pre-wrap; word-break:break-all;
+}
+#logLinesSelect{
+  background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+  border-radius:10px; padding:7px 10px; font-family:var(--font-mono); font-size:12px;
+  cursor:pointer; margin-left:6px;
+}
 
 /* ---------- LEFT: CATEGORIES ---------- */
 .categories{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden; }
@@ -628,7 +634,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   #versionBadge{ display:none; }
   #autoSync{ font-size:11px; padding:6px 8px; }
   #syncBtn{ padding:8px 10px; font-size:11px; }
-  #recordingsBtn, #settingsBtn, #userMenuBtn{ height:32px; }
+  #settingsBtn, #userMenuBtn{ height:32px; }
 
   /* On a phone the app-shell (fixed 100vh, each panel scrolling
      independently within its own box) fights the one thing that actually
@@ -651,6 +657,7 @@ select#autoSync:focus, button:focus-visible, input:focus-visible{ outline:2px so
   .side-nav{ width:auto; flex-direction:row; overflow-x:auto; border-right:none; border-bottom:1px solid var(--border); padding:8px; }
   .side-nav-item{ width:auto; font-size:15px; padding:8px 10px; }
   #settingsModal .modal.modal-wide{ padding:16px; }
+  #recordingsPage{ padding:16px; }
   .top-tabs{ margin-left:8px; }
   .top-tab{ padding:5px 10px; font-size:15px; }
   .categories{
