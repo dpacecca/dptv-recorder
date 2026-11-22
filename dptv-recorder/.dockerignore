@@ -1,8 +1,0 @@
-node_modules
-data/*.db
-data/*.db-*
-.git
-*.log
-public/vendor/hls.min.js
-recordings/*.ts
-.env
