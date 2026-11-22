@@ -13,14 +13,11 @@ services:
     container_name: dptv-recorder
     ports:
       - "${HOST_PORT:-3000}:3000"
-      # Player API only (API_PORT below): publish this one to the internet, not 3000.
-      - "${HOST_API_PORT:-3001}:3001"
     volumes:
       - ${DATA_DIR:-./data}:/data
       - ${RECORDINGS_DIR:-./recordings}:/recordings
     environment:
       - PORT=3000
-      - API_PORT=3001
       - DB_PATH=/data/guide.db
       - RECORDINGS_PATH=/recordings
       - PUID=${PUID:-99}
