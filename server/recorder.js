@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { db, getSetting, setSetting } = require('./db');
+const { db, getSetting, setSetting, getSystemSetting, setSystemSetting } = require('./db');
 const notifier = require('./notifier');
 const { buildStreamEntryPath, buildCatchupEntryPath, lineStreamEntryPath, lineCatchupEntryPath } = require('./streamEntry');
 const recordingLine = require('./recordingLine');
@@ -39,8 +39,22 @@ function padMinutes(userId) {
   };
 }
 
+// (2.10.5) The recorder-wide default format (Admin Settings): what every user without a choice of
+// their own records in. TS or MKV-after-recording only.
+function defaultRecordFormat() {
+  const f = getSystemSetting('default_record_format', 'ts');
+  return f === 'mkv_post' ? 'mkv_post' : 'ts';
+}
+
+/** Saves the default format; with [applyToAll], every user's own choice is cleared so all use it. */
+function setDefaultRecordFormat(fmt, applyToAll) {
+  setSystemSetting('default_record_format', fmt === 'mkv_post' || fmt === 'mkv' ? 'mkv_post' : 'ts');
+  if (applyToAll) db.prepare(`DELETE FROM settings WHERE key = 'record_format'`).run();
+  return defaultRecordFormat();
+}
+
 function recordFormat(userId) {
-  const f = getSetting(userId, 'record_format', 'ts');
+  const f = getSetting(userId, 'record_format', null) ?? defaultRecordFormat();
   // (2.10.4) A live .mkv is only well-formed if ffmpeg exits cleanly, and a stall stop or reconnect
   // leaves it without its index: DPTV-Player then shows a black screen. "mkv" now records as .ts and
   // remuxes to a finished .mkv at the end, as "mkv_post" always has.
@@ -585,5 +599,7 @@ module.exports = {
   getRecordingSettings,
   setRecordingSettings,
   repairUnfinishedMkvs,
+  defaultRecordFormat,
+  setDefaultRecordFormat,
   BASE_RECORDINGS_DIR,
 };

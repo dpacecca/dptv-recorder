@@ -325,6 +325,20 @@
         <button id="lineSave" class="btn-primary">Save default line</button>
       </div>
 
+      <div class="modal-hint" style="margin-top:14px"><strong>Default recording format</strong></div>
+      <div class="modal-hint">What recordings are saved as for every user who hasn't chosen their own in Recording
+        settings. Both copy the stream as it is, with no re-encoding.</div>
+      <label>Format<br>
+        <select id="defaultRecFormat">
+          <option value="ts">Raw .ts (playable while still recording)</option>
+          <option value="mkv_post">.ts while recording, then remux to finished .mkv</option>
+        </select></label>
+      <label class="rec-select-all"><input type="checkbox" id="defaultRecFormatAll" checked> Also switch every user to it now</label>
+      <div class="modal-error" id="defaultRecFormatError"></div>
+      <div class="modal-actions">
+        <button id="defaultRecFormatSave" class="btn-primary">Save default format</button>
+      </div>
+
       <div class="modal-hint" style="margin-top:14px"><strong>DPTV-Server</strong></div>
       <div class="modal-hint">Trust a DPTV-Server: anyone with a login there can sign DPTV-Player and DPTV Web in to
         this recorder with it, with no API key to copy. Their recorder account is made the first time they sign in,

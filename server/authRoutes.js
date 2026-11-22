@@ -6,6 +6,7 @@ const dptv = require('./dptvLink');
 const recordingLine = require('./recordingLine');
 const logger = require('./logger');
 const { getSystemSetting, setSystemSetting } = require('./db');
+const recorder = require('./recorder');
 
 const router = express.Router();
 
@@ -218,6 +219,16 @@ router.post('/admin/recording-line', auth.requireAuth, auth.requireSession, auth
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// ---------------- admin: default recording format (2.10.5) ----------------
+router.get('/admin/record-format', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
+  res.json({ format: recorder.defaultRecordFormat() });
+});
+
+router.post('/admin/record-format', auth.requireAuth, auth.requireSession, auth.requireAdmin, (req, res) => {
+  const { format, applyToAll } = req.body || {};
+  res.json({ ok: true, format: recorder.setDefaultRecordFormat(format, !!applyToAll) });
 });
 
 // ---------------- admin: DPTV-Server ----------------
