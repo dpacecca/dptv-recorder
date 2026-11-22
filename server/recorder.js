@@ -41,7 +41,11 @@ function padMinutes(userId) {
 
 function recordFormat(userId) {
   const f = getSetting(userId, 'record_format', 'ts');
-  return ['ts', 'mkv', 'mkv_post'].includes(f) ? f : 'ts'; // whitelist - never trust an unexpected stored value
+  // (2.10.4) A live .mkv is only well-formed if ffmpeg exits cleanly, and a stall stop or reconnect
+  // leaves it without its index: DPTV-Player then shows a black screen. "mkv" now records as .ts and
+  // remuxes to a finished .mkv at the end, as "mkv_post" always has.
+  if (f === 'mkv') return 'mkv_post';
+  return ['ts', 'mkv_post'].includes(f) ? f : 'ts'; // whitelist - never trust an unexpected stored value
 }
 
 function safeFilenamePart(str) {
@@ -124,6 +128,7 @@ function remuxToMkv(row, tsPath) {
     if (code === 0 && fs.existsSync(mkvPath) && fs.statSync(mkvPath).size > 0) {
       fs.unlink(tsPath, () => {});
       db.prepare(`UPDATE recordings SET filename=? WHERE id=?`).run(mkvFilename, row.id);
+      setSetting(row.user_id, `mkv_checked_${row.id}`, '1'); // already finished properly (2.10.4)
       console.log(`[recorder] #${row.id} remux complete, removed source .ts`);
     } else {
       // remux failed - keep the original .ts, it's still a perfectly valid
@@ -506,6 +511,51 @@ function init() {
   db.prepare(`UPDATE recordings SET status='failed', error='Interrupted by a server restart' WHERE status='recording'`).run();
   tickTimer = setInterval(tick, TICK_MS);
   tick();
+  repairUnfinishedMkvs().catch((err) => console.warn(`[recorder] mkv repair stopped: ${err.message}`));
+}
+
+// ---------------- repairing live .mkv recordings (2.10.4) ----------------
+// A recording made in the old live-.mkv format is only well-formed if ffmpeg exited cleanly; a stall
+// stop or a restart left it without its seek index (and still claiming the full length ffmpeg wrote
+// into its header at the start, so its duration gives nothing away). DPTV-Player then shows a black
+// screen. Once per recording, every finished .mkv is remuxed in place (stream copy, no quality loss,
+// harmless for a file that was already fine).
+
+function remuxInPlace(file) {
+  return new Promise((resolve) => {
+    const tmp = file.replace(/\.mkv$/, '.repair.mkv');
+    const proc = spawn('ffmpeg', ['-y', '-v', 'error', '-fflags', '+genpts', '-i', file, '-map', '0', '-c', 'copy', '-f', 'matroska', tmp], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let err = '';
+    proc.stderr.on('data', (c) => { err = (err + c.toString()).slice(-500); });
+    proc.on('close', (code) => {
+      if (code === 0 && fs.existsSync(tmp) && fs.statSync(tmp).size > 0) {
+        fs.renameSync(tmp, file);
+        resolve(true);
+      } else {
+        fs.unlink(tmp, () => {});
+        console.warn(`[recorder] repair of ${path.basename(file)} failed (code ${code}): ${err.split('\n').filter(Boolean).slice(-2).join(' | ')}`);
+        resolve(false);
+      }
+    });
+    proc.on('error', () => resolve(false));
+  });
+}
+
+async function repairUnfinishedMkvs() {
+  const rows = db.prepare(`SELECT id, user_id, filename FROM recordings WHERE status='completed' AND filename LIKE '%.mkv'`).all();
+  for (const row of rows) {
+    const key = `mkv_checked_${row.id}`;
+    if (getSetting(row.user_id, key, '') === '1') continue;
+    if (activeProcs.has(row.id)) continue;
+    const file = path.join(userRecordingsDir(row.user_id), row.filename);
+    if (!fs.existsSync(file)) continue;
+    console.log(`[recorder] #${row.id} remuxing ${row.filename} once so it has a proper index`);
+    const ok = await remuxInPlace(file);
+    console.log(`[recorder] #${row.id} repair ${ok ? 'done' : 'failed - the original is kept'}`);
+    setSetting(row.user_id, key, '1');
+  }
 }
 
 function getRecordingSettings(userId) {
@@ -521,7 +571,7 @@ function getRecordingSettings(userId) {
 function setRecordingSettings(userId, { padBeforeMin, padAfterMin, recordFormat: fmt }) {
   if (padBeforeMin !== undefined) setSetting(userId, 'record_pad_before_min', Math.max(0, Number(padBeforeMin) || 0));
   if (padAfterMin !== undefined) setSetting(userId, 'record_pad_after_min', Math.max(0, Number(padAfterMin) || 0));
-  if (fmt !== undefined) setSetting(userId, 'record_format', ['ts', 'mkv', 'mkv_post'].includes(fmt) ? fmt : 'ts');
+  if (fmt !== undefined) setSetting(userId, 'record_format', fmt === 'mkv' ? 'mkv_post' : ['ts', 'mkv_post'].includes(fmt) ? fmt : 'ts');
 }
 
 module.exports = {
@@ -534,5 +584,6 @@ module.exports = {
   findForProgram,
   getRecordingSettings,
   setRecordingSettings,
+  repairUnfinishedMkvs,
   BASE_RECORDINGS_DIR,
 };
